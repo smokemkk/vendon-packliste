@@ -127,6 +127,7 @@ const KEY = 'packliste_' + DATA.datum + '_' + DATA.tour;
 let state = JSON.parse(LS.getItem(KEY) || '{"items":{},"hist":[],"tab":0}');
 if (!state.items) state = {items:{},hist:[],tab:0};
 const FEHLT = DATA.machines.length;
+if (typeof state.tab !== 'number' || state.tab < 0 || state.tab > FEHLT) state.tab = 0;
 const save = () => LS.setItem(KEY, JSON.stringify(state));
 const k = (m,it) => m.device + '_' + it.id;
 const selTxt = it => it.sel.join('+') || '\u2013';
@@ -172,7 +173,7 @@ function render() {
         h += row(e.m, e.it, 'miss', '!', false);
       }
       h += '</ul><button class="report" onclick="reportFehlt()">\ud83d\udce4 Fehlt-Liste melden</button>';
-      h += '<div class="hint">Diese Positionen sind in Vendon bereits als aufgef\u00fcllt gebucht, wurden aber nicht gepackt. \u201eMelden\u201c \u00f6ffnet das Teilen-Men\u00fc \u2013 bitte an Omar schicken, damit der Bestand korrigiert wird.</div>';
+      h += '<div class="hint">\u201eMelden\u201c \u00f6ffnet das Teilen-Men\u00fc \u2013 die Liste bitte wie besprochen senden, damit der Bestand korrigiert wird. Antippen macht eine Markierung r\u00fcckg\u00e4ngig.</div>';
     } else {
       h += '<div class="alldone">\u2705 Nichts fehlt!</div>';
     }
@@ -243,7 +244,7 @@ window.reportFehlt = async () => {
     if (e.i !== lastI) { txt += '\nKiste ' + (e.i+1) + ' \u00b7 ' + e.m.label + ' (Device ' + e.m.device + '):\n'; lastI = e.i; }
     txt += '- Anwahl ' + e.it.sel.join('+') + ' \u00b7 ' + e.it.qty + '\u00d7 ' + e.it.name + ' \u00b7 ' + e.it.art + ' \u00b7 [id ' + e.it.id + ']\n';
   }
-  txt += '\nGesamt: ' + ml.length + ' Position(en) nicht gepackt (in Vendon bereits gebucht \u2013 bitte korrigieren).';
+  txt += '\nGesamt: ' + ml.length + ' Position(en) nicht gepackt \u2013 bitte Bestand korrigieren.';
   try { await navigator.share({title: 'Fehlt-Meldung Packliste ' + DATA.tour, text: txt}); }
   catch(e) {
     try { await navigator.clipboard.writeText(txt); document.getElementById('heard').textContent = 'Meldung kopiert \u2013 in Chat/Mail einf\u00fcgen'; }
