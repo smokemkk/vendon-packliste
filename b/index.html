@@ -144,7 +144,7 @@ function row(m, it, cls, boxTxt, withX) {
 
 function render() {
   if (!DATA.machines.length) {
-    document.getElementById('main').innerHTML = '<div class="nodata">F\u00fcr die ' + esc(DATA.tour) + ' ist noch keine Liste ver\u00f6ffentlicht.<br>Sie erscheint hier automatisch nach der n\u00e4chsten Vendon-Buchung.</div>';
+    document.getElementById('main').innerHTML = '<div class="nodata">F\u00fcr die ' + esc(DATA.tour) + ' ist noch keine Liste ver\u00f6ffentlicht.<br>Sie erscheint hier automatisch nach der n\u00e4chsten Bef\u00fcllung.</div>';
     document.getElementById('prog').textContent = ''; document.getElementById('tabs').innerHTML = '';
     document.getElementById('nx').innerHTML = ''; document.getElementById('undo').disabled = true;
     return;
