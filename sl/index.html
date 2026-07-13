@@ -254,6 +254,9 @@ window.reportFehlt = async () => {
 
 let voiceOn = !!state.voiceOn, micOn = false, recog = null, speaking = false;
 const synth = window.speechSynthesis;
+// iOS spricht beim gleichen rate-Wert schneller als Android -> geraeteabhaengiges Tempo (Nutzerfeedback 2026-07-13)
+const IOS = /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+const RATE = IOS ? 1.05 : 1.25;
 function speak(txt) {
   if (!voiceOn || !synth) return;
   try {
@@ -261,7 +264,7 @@ function speak(txt) {
     speaking = true;
     synth.cancel();
     const u = new SpeechSynthesisUtterance(txt);
-    u.lang = 'de-DE'; u.rate = 1.25;
+    u.lang = 'de-DE'; u.rate = RATE;
     u.onend = u.onerror = () => { speaking = false; if (micOn) startRecog(); };
     synth.speak(u);
   } catch(e) { speaking = false; }
