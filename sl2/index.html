@@ -25,14 +25,32 @@ header { position:sticky; top:0; z-index:5; background:var(--bg); padding:8px 10
 .bar>div { height:100%; background:var(--ok); width:0%; transition:width .25s; }
 .now { margin:10px; padding:14px 14px 12px; background:var(--card); border:2px solid var(--acc); border-radius:16px; }
 .now .lbl { font-size:12px; letter-spacing:1.5px; color:var(--acc); font-weight:700; }
+.mhead { display:flex; align-items:baseline; gap:9px; margin:0 0 9px; padding-bottom:9px; border-bottom:1px solid var(--line); flex-wrap:wrap; }
+.kbadge { flex:0 0 auto; background:var(--acc); color:#04283d; font-size:14px; font-weight:800; padding:4px 10px; border-radius:9px; font-variant-numeric:tabular-nums; }
+.mname { font-size:17px; font-weight:800; line-height:1.25; color:var(--fg); word-break:break-word; }
 .nowrow { display:flex; align-items:center; gap:14px; margin-top:6px; }
 .nowsel { font-size:56px; font-weight:800; line-height:1; font-variant-numeric:tabular-nums; min-width:92px; }
 .nowqty { font-size:46px; font-weight:800; color:var(--ok); margin-left:auto; white-space:nowrap; }
 .nowname { font-size:19px; font-weight:600; margin-top:8px; line-height:1.3; }
 .nowart { font-size:12px; color:var(--dim); margin-top:3px; }
 .btnrow { display:flex; gap:10px; margin-top:12px; }
-.nowbtn { flex:3; padding:15px 8px; font-size:19px; font-weight:800; border:0; border-radius:12px; background:var(--ok); color:#03210f; }
-.missbtn { flex:2; padding:15px 8px; font-size:15px; font-weight:800; border-radius:12px; background:#3a2f14; color:var(--warn); border:1.5px solid var(--warn); }
+.btnrow2 { display:flex; gap:10px; margin-top:9px; }
+.nowbtn { flex:1; padding:15px 8px; font-size:19px; font-weight:800; border:0; border-radius:12px; background:var(--ok); color:#03210f; }
+.partbtn { flex:1; padding:13px 8px; font-size:15px; font-weight:800; border-radius:12px; background:#12304a; color:var(--acc); border:1.5px solid var(--acc); }
+.missbtn { flex:1; padding:13px 8px; font-size:15px; font-weight:800; border-radius:12px; background:#3a2f14; color:var(--warn); border:1.5px solid var(--warn); }
+.partpick { margin-top:12px; padding:12px; background:#0f1620; border:1.5px solid var(--acc); border-radius:12px; }
+.partpick .pq { font-size:14px; color:var(--dim); text-align:center; }
+.partpick .pq b { color:var(--fg); }
+.pickrow { display:flex; align-items:center; justify-content:center; gap:16px; margin:12px 0 6px; }
+.stepbtn { width:58px; height:58px; font-size:32px; font-weight:800; border-radius:14px; border:1.5px solid var(--acc); background:var(--card); color:var(--acc); line-height:1; }
+.stepbtn:disabled { opacity:.3; }
+.pickval { font-size:46px; font-weight:800; min-width:80px; text-align:center; font-variant-numeric:tabular-nums; color:var(--ok); }
+.pickmiss { text-align:center; font-size:13px; color:var(--warn); min-height:16px; margin-bottom:6px; }
+.pickact { display:flex; gap:10px; }
+.pickok { flex:2; padding:14px 8px; font-size:16px; font-weight:800; border:0; border-radius:12px; background:var(--ok); color:#03210f; }
+.pickcancel { flex:1; padding:14px 8px; font-size:15px; font-weight:700; border-radius:12px; background:var(--card); color:var(--fg); border:1.5px solid var(--line); }
+li .psub { display:block; font-size:11px; color:var(--warn); margin-top:2px; }
+.mgroup .dev { color:var(--dim); font-weight:500; font-size:12px; }
 .alldone { margin:10px; padding:20px; text-align:center; background:var(--card); border:2px solid var(--ok); border-radius:16px; font-size:20px; font-weight:800; color:var(--ok); }
 .alldone.w { border-color:var(--warn); color:var(--warn); font-size:17px; }
 .report { display:block; width:calc(100% - 24px); margin:14px 12px; padding:15px; font-size:17px; font-weight:800; border:0; border-radius:12px; background:var(--warn); color:#3a2a00; }
@@ -124,22 +142,30 @@ function startApp(DATA) {
 document.getElementById('ttl').innerHTML = '&#128230; Packliste ' + DATA.tour + ' &middot; ' + (DATA.datum || '&#8211;');
 document.title = 'Packliste ' + DATA.tour + ' ' + (DATA.datum || '');
 const KEY = 'packliste_' + DATA.datum + '_' + DATA.tour;
-let state = JSON.parse(LS.getItem(KEY) || '{"items":{},"hist":[],"tab":0}');
-if (!state.items) state = {items:{},hist:[],tab:0};
+let state = JSON.parse(LS.getItem(KEY) || '{"items":{},"part":{},"hist":[],"tab":0}');
+if (!state.items) state = {items:{},part:{},hist:[],tab:0};
+if (!state.part) state.part = {};
 const FEHLT = DATA.machines.length;
 if (typeof state.tab !== 'number' || state.tab < 0 || state.tab > FEHLT) state.tab = 0;
 const save = () => LS.setItem(KEY, JSON.stringify(state));
 const k = (m,it) => m.device + '_' + it.id;
 const selTxt = it => it.sel.join('+') || '\u2013';
 const esc = s => String(s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+// Status je Position: 0 offen, 1 komplett gepackt, 2 nichts vorraetig, 3 Teilmenge gepackt.
 const st = key => state.items[key] || 0;
+const partOf = key => state.part[key] || 0;
+// Fehlmenge (fuer Fehlt-Tab + Meldung + Korrektur): status 2 = ganze Menge, status 3 = Rest.
+const missQty = (m,it) => { const s = st(k(m,it)); return s===2 ? it.qty : s===3 ? Math.max(0, it.qty - partOf(k(m,it))) : 0; };
 const rest = m => m.items.filter(it => !st(k(m,it))).length;
-const missList = () => DATA.machines.flatMap((m,i) => m.items.filter(it => st(k(m,it))===2).map(it => ({m, i, it})));
+const missList = () => DATA.machines.flatMap((m,i) => m.items.filter(it => missQty(m,it) > 0).map(it => ({m, i, it, miss: missQty(m,it)})));
+let ui = {pickKey:null, pickVal:0};
 
-function row(m, it, cls, boxTxt, withX) {
+function row(m, it, cls, boxTxt, withX, qtyHtml, sub) {
   const key = k(m,it);
   const x = withX ? `<button class="xbtn" onclick="event.stopPropagation();mark('${key}',2)">\u2717 fehlt</button>` : '';
-  return `<li class="${cls}" onclick="mark('${key}',${cls?0:1})"><span class="box">${boxTxt}</span><span class="sel">${selTxt(it)}</span><span class="nm">${esc(it.name)}<span class="art">${esc(it.art)}</span></span>${x}<span class="qty">\u00d7 ${it.qty}</span></li>`;
+  const subH = sub ? `<span class="psub">${esc(sub)}</span>` : '';
+  const q = qtyHtml != null ? qtyHtml : ('\u00d7 ' + it.qty);
+  return `<li class="${cls}" onclick="mark('${key}',${cls?0:1})"><span class="box">${boxTxt}</span><span class="sel">${selTxt(it)}</span><span class="nm">${esc(it.name)}<span class="art">${esc(it.art)}</span>${subH}</span>${x}<span class="qty">${q}</span></li>`;
 }
 
 function render() {
@@ -157,20 +183,22 @@ function render() {
   }).join('') + `<div class="tab warn${state.tab===FEHLT?' act':''}" onclick="go(${FEHLT})">\u26a0 Fehlt (${mc})</div>`;
 
   const allT = DATA.machines.reduce((n,m)=>n+m.items.length,0);
-  const allP = DATA.machines.reduce((n,m)=>n+m.items.filter(it=>st(k(m,it))===1).length,0);
-  document.getElementById('prog').innerHTML = `<b>${allP} \u2713</b>${mc?` \u00b7 <i>${mc} \u26a0</i>`:''} \u00b7 ${allT-allP-mc} offen`;
-  document.getElementById('bar').style.width = allT ? ((allP+mc)/allT*100)+'%' : '100%';
+  const packedPos = DATA.machines.reduce((n,m)=>n+m.items.filter(it=>{const s=st(k(m,it));return s===1||s===3;}).length,0);
+  const offen = DATA.machines.reduce((n,m)=>n+m.items.filter(it=>!st(k(m,it))).length,0);
+  document.getElementById('prog').innerHTML = `<b>${packedPos} \u2713</b>${mc?` \u00b7 <i>${mc} \u26a0</i>`:''} \u00b7 ${offen} offen`;
+  document.getElementById('bar').style.width = allT ? ((allT-offen)/allT*100)+'%' : '100%';
   document.getElementById('undo').disabled = !state.hist.length;
 
   let h = '';
   if (state.tab === FEHLT) {
     const ml = missList();
-    h += '<h3 class="warn">Nicht vorr\u00e4tig \u2013 bitte melden</h3>';
+    h += '<h3 class="warn">Fehlmengen \u2013 bitte melden</h3>';
     if (ml.length) {
       let lastI = -1;
       for (const e of ml) {
-        if (e.i !== lastI) { if (lastI >= 0) h += '</ul>'; h += `<div class="mgroup">Kiste ${e.i+1} \u00b7 ${esc(e.m.label)}</div><ul>`; lastI = e.i; }
-        h += row(e.m, e.it, 'miss', '!', false);
+        if (e.i !== lastI) { if (lastI >= 0) h += '</ul>'; h += `<div class="mgroup">Kiste ${e.i+1} \u00b7 ${esc(e.m.label)} <span class="dev">#${esc(e.m.device)}</span></div><ul>`; lastI = e.i; }
+        const s = st(k(e.m,e.it));
+        h += row(e.m, e.it, 'miss', s===3?'\u00bd':'!', false, '\u00d7 ' + e.miss, s===3 ? (partOf(k(e.m,e.it)) + ' gepackt \u00b7 Rest fehlt') : '');
       }
       h += '</ul><button class="report" onclick="reportFehlt()">\ud83d\udce4 Fehlt-Liste melden</button>';
       h += '<div class="hint">\u201eMelden\u201c \u00f6ffnet das Teilen-Men\u00fc \u2013 die Liste bitte wie besprochen senden, damit der Bestand korrigiert wird. Antippen macht eine Markierung r\u00fcckg\u00e4ngig.</div>';
@@ -181,20 +209,38 @@ function render() {
     const m = DATA.machines[state.tab];
     const open = m.items.filter(it => !st(k(m,it)));
     const miss = m.items.filter(it => st(k(m,it))===2);
+    const partial = m.items.filter(it => st(k(m,it))===3);
     const done = m.items.filter(it => st(k(m,it))===1);
     if (open.length) {
       const it = open[0], key = k(m,it);
-      h += `<div class="now"><div class="lbl">JETZT PACKEN \u00b7 KISTE ${state.tab+1} ${esc(m.label).toUpperCase()}</div>
+      h += `<div class="now">
+        <div class="mhead"><span class="kbadge">Kiste ${state.tab+1}</span><span class="mname">${esc(m.label)}</span></div>
+        <div class="lbl">JETZT PACKEN</div>
         <div class="nowrow"><span class="nowsel">${selTxt(it)}</span><span class="nowqty">\u00d7 ${it.qty}</span></div>
-        <div class="nowname">${esc(it.name)}</div><div class="nowart">${esc(it.art)}</div>
-        <div class="btnrow"><button class="nowbtn" onclick="mark('${key}',1)">\u2713 Gepackt</button><button class="missbtn" onclick="mark('${key}',2)">\u2717 Nicht vorr\u00e4tig</button></div></div>`;
+        <div class="nowname">${esc(it.name)}</div><div class="nowart">${esc(it.art)}</div>`;
+      if (ui.pickKey === key) {
+        const v = ui.pickVal, mv = it.qty - v;
+        h += `<div class="partpick">
+          <div class="pq">Wie viele <b>gepackt</b>? (Bedarf ${it.qty})</div>
+          <div class="pickrow"><button class="stepbtn" ${v<=0?'disabled':''} onclick="pickAdj(-1,${it.qty})">\u2212</button><span class="pickval">${v}</span><button class="stepbtn" ${v>=it.qty?'disabled':''} onclick="pickAdj(1,${it.qty})">+</button></div>
+          <div class="pickmiss">${mv>0?('\u26a0 '+mv+' fehlt \u2013 wird gemeldet'):'\u2705 alles vorhanden'}</div>
+          <div class="pickact"><button class="pickok" onclick="pickOk('${key}',${it.qty})">\u2713 \u00dcbernehmen</button><button class="pickcancel" onclick="pickCancel()">Abbrechen</button></div>
+        </div>`;
+      } else {
+        h += `<div class="btnrow"><button class="nowbtn" onclick="mark('${key}',1)">\u2713 Gepackt</button></div>
+          <div class="btnrow2"><button class="partbtn" onclick="startPart('${key}',${it.qty})">\u2248 Teilmenge</button><button class="missbtn" onclick="mark('${key}',2)">\u2717 Nicht vorr\u00e4tig</button></div>`;
+      }
+      h += `</div>`;
     } else {
-      h += miss.length
-        ? `<div class="alldone w">\u26a0 Kiste ${state.tab+1} fertig \u2013 ${miss.length} Position(en) nicht vorr\u00e4tig (siehe \u201eFehlt\u201c)</div>`
+      const fehltN = miss.length + partial.length;
+      h += fehltN
+        ? `<div class="alldone w">\u26a0 Kiste ${state.tab+1} fertig \u2013 ${fehltN} Position(en) mit Fehlmenge (siehe \u201eFehlt\u201c)</div>`
         : `<div class="alldone">\u2705 Kiste ${state.tab+1} \u201e${esc(m.label)}\u201c komplett!</div>`;
     }
     if (open.length > 1)
       h += '<h3>Noch offen</h3><ul>' + open.slice(1).map(it => row(m,it,'','',true)).join('') + '</ul>';
+    if (partial.length)
+      h += '<h3 class="warn">Teilweise gepackt</h3><ul>' + partial.map(it => row(m,it,'miss','\u00bd',false,'\u00d7 '+missQty(m,it),partOf(k(m,it))+' gepackt \u00b7 Rest fehlt')).join('') + '</ul>';
     if (miss.length)
       h += '<h3 class="warn">Nicht vorr\u00e4tig</h3><ul>' + miss.map(it => row(m,it,'miss','!',false)).join('') + '</ul>';
     if (done.length)
@@ -217,20 +263,38 @@ function render() {
   save();
   window.scrollTo(0,0);
 }
-window.go = i => { state.tab = i; render(); announce(); };
+window.go = i => { state.tab = i; ui.pickKey = null; render(); announce(); };
 window.mark = (key, val) => {
-  const prev = st(key);
-  if (val === 0) { delete state.items[key]; } else { state.items[key] = val; }
-  state.hist.push({key, prev});
+  const prev = st(key), prevPart = state.part[key];
+  ui.pickKey = null;
+  if (val === 0) { delete state.items[key]; delete state.part[key]; }
+  else { state.items[key] = val; if (val !== 3) delete state.part[key]; }
+  state.hist.push({key, prev, prevPart});
   if (state.hist.length > 200) state.hist.shift();
   render();
-  if (navigator.vibrate) navigator.vibrate(val===2 ? [40,60,40] : 30);
-  announce(val===2 ? 'Als fehlend markiert. ' : '');
+  if (navigator.vibrate) navigator.vibrate(val===2 ? [40,60,40] : val===3 ? [30,40,30] : 30);
+  announce(val===2 ? 'Als fehlend markiert. ' : val===3 ? 'Teilmenge gebucht. ' : '');
 };
+window.markPart = (key, n) => {
+  const prev = st(key), prevPart = state.part[key];
+  ui.pickKey = null;
+  state.items[key] = 3; state.part[key] = n;
+  state.hist.push({key, prev, prevPart});
+  if (state.hist.length > 200) state.hist.shift();
+  render();
+  if (navigator.vibrate) navigator.vibrate([30,40,30]);
+  announce('Teilmenge gebucht. ');
+};
+window.startPart = (key, qty) => { ui.pickKey = key; ui.pickVal = qty > 1 ? qty - 1 : 0; render(); };
+window.pickAdj = (delta, qty) => { ui.pickVal = Math.max(0, Math.min(qty, ui.pickVal + delta)); render(); };
+window.pickCancel = () => { ui.pickKey = null; render(); };
+window.pickOk = (key, qty) => { const v = ui.pickVal; if (v >= qty) mark(key, 1); else if (v <= 0) mark(key, 2); else markPart(key, v); };
 window.undo = () => {
   const a = state.hist.pop();
   if (!a) return;
+  ui.pickKey = null;
   if (a.prev === 0) delete state.items[a.key]; else state.items[a.key] = a.prev;
+  if (a.prevPart == null) delete state.part[a.key]; else state.part[a.key] = a.prevPart;
   render();
   if (navigator.vibrate) navigator.vibrate(15);
   announce('Zur\u00fcckgenommen. ');
@@ -242,9 +306,9 @@ window.reportFehlt = async () => {
   let lastI = -1;
   for (const e of ml) {
     if (e.i !== lastI) { txt += '\nKiste ' + (e.i+1) + ' \u00b7 ' + e.m.label + ' (Device ' + e.m.device + '):\n'; lastI = e.i; }
-    txt += '- Anwahl ' + e.it.sel.join('+') + ' \u00b7 ' + e.it.qty + '\u00d7 ' + e.it.name + ' \u00b7 ' + e.it.art + ' \u00b7 [id ' + e.it.id + ']\n';
+    txt += '- Anwahl ' + e.it.sel.join('+') + ' \u00b7 ' + e.miss + '\u00d7 ' + e.it.name + ' \u00b7 ' + e.it.art + ' \u00b7 [id ' + e.it.id + ']\n';
   }
-  txt += '\nGesamt: ' + ml.length + ' Position(en) nicht gepackt \u2013 bitte Bestand korrigieren.';
+  txt += '\nGesamt: ' + ml.length + ' Position(en) mit Fehlmenge \u2013 bitte Bestand korrigieren.';
   try { await navigator.share({title: 'Fehlt-Meldung Packliste ' + DATA.tour, text: txt}); }
   catch(e) {
     try { await navigator.clipboard.writeText(txt); document.getElementById('heard').textContent = 'Meldung kopiert \u2013 in Chat/Mail einf\u00fcgen'; }
