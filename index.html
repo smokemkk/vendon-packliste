@@ -10,19 +10,82 @@
 body { margin:0; background:var(--bg); color:var(--fg); font-family:system-ui,-apple-system,'Segoe UI',Roboto,sans-serif; padding:18px 14px; }
 h1 { font-size:20px; color:var(--acc); margin:6px 2px 16px; }
 a { display:flex; justify-content:space-between; align-items:center; background:var(--card); border:1px solid var(--line); border-radius:14px; padding:17px 16px; margin-bottom:10px; color:var(--fg); text-decoration:none; font-size:18px; font-weight:700; }
-a span { color:var(--dim); font-size:14px; font-weight:500; }
+a .meta { display:flex; align-items:center; gap:9px; }
+a .meta i { color:var(--dim); font-size:14px; font-weight:500; font-style:normal; }
+.chip { display:none; font-style:normal; font-size:11px; font-weight:800; letter-spacing:.6px; padding:3px 8px; border-radius:8px; white-space:nowrap; }
+.chip.fresh { display:inline-block; background:#12331f; color:#2ecc71; border:1px solid #2ecc71; }
+.chip.warn { display:inline-block; background:#3a2f14; color:#f5a623; border:1px solid #f5a623; }
+.chip.old { display:inline-block; background:#4d1210; color:#ffe2e0; border:1px solid #ff3b30; }
+.chip.pruef { display:inline-block; background:#3a2f14; color:#f5a623; border:1px solid #f5a623; }
+.chip.pending, .chip.unknown, .chip.none { display:inline-block; background:var(--card); color:var(--dim); border:1px solid var(--line); }
+a.oldrow { border-color:#ff3b30; background:#2c1413; }
 p { color:var(--dim); font-size:13px; margin-top:18px; line-height:1.5; }
 </style>
 </head>
 <body>
 <h1>&#128230; OMS Packlisten</h1>
-<a href="sl/">SL Tour<span>Donnerstag</span></a>
-<a href="b/">B Tour<span>Donnerstag</span></a>
-<a href="l/">L Tour<span>Freitag</span></a>
-<a href="sl2/">SL 2 Tour<span>Sonntag</span></a>
-<a href="l2/">L2 Tour<span>Sonntag</span></a>
-<a href="b2/">B2 Tour<span>Montag</span></a>
-<a href="h/">H Tour<span>Mittwoch</span></a>
-<p>Tipp: Die Tour-Seite als Homescreen-Icon ablegen. PIN wird nur einmal je Ger&auml;t ben&ouml;tigt.</p>
+<a href="sl/" data-slug="sl">SL Tour<span class="meta"><em class="chip"></em><i>Donnerstag</i></span></a>
+<a href="b/" data-slug="b">B Tour<span class="meta"><em class="chip"></em><i>Donnerstag</i></span></a>
+<a href="l/" data-slug="l">L Tour<span class="meta"><em class="chip"></em><i>Freitag</i></span></a>
+<a href="sl2/" data-slug="sl2">SL 2 Tour<span class="meta"><em class="chip"></em><i>Sonntag</i></span></a>
+<a href="l2/" data-slug="l2">L2 Tour<span class="meta"><em class="chip"></em><i>Sonntag</i></span></a>
+<a href="b2/" data-slug="b2">B2 Tour<span class="meta"><em class="chip"></em><i>Montag</i></span></a>
+<a href="h/" data-slug="h">H Tour<span class="meta"><em class="chip"></em><i>Mittwoch</i></span></a>
+<p>Farbe = Stand der Liste: <b style="color:#2ecc71">HEUTE</b> &middot; <b style="color:#f5a623">GESTERN</b> &middot; <b style="color:#ff3b30">X TAGE ALT = veraltet</b>.<br>
+Tipp: Die Tour-Seite als Homescreen-Icon ablegen. PIN wird nur einmal je Ger&auml;t ben&ouml;tigt.</p>
+<script>
+const b64 = s => Uint8Array.from(atob(s), c => c.charCodeAt(0));
+async function standVon(slug, pin) {
+  const r = await fetch(slug + '/data.enc.json?t=' + Date.now(), {cache:'no-store'});
+  if (!r.ok) throw new Error('load');
+  const enc = await r.json();
+  const km = await crypto.subtle.importKey('raw', new TextEncoder().encode(pin), 'PBKDF2', false, ['deriveKey']);
+  const key = await crypto.subtle.deriveKey({name:'PBKDF2', salt:b64(enc.salt), iterations:200000, hash:'SHA-256'}, km, {name:'AES-GCM', length:256}, false, ['decrypt']);
+  const pt = await crypto.subtle.decrypt({name:'AES-GCM', iv:b64(enc.iv)}, key, b64(enc.data));
+  return JSON.parse(new TextDecoder().decode(pt)).datum || '';
+}
+// Reine Kalendertage nach Geraetedatum. Rueckgabe wie im Tour-Viewer:
+// Zahl = Alter in Tagen (negativ = Zukunft), '' = kein Datum, null = Datum unbrauchbar.
+function alterInTagen(datum, heute) {
+  const s = String(datum || '');
+  if (s.length === 0) return '';
+  if (s.length !== 10 || s.charAt(4) !== '-' || s.charAt(7) !== '-') return null;
+  const nurZiffern = x => { for (let i = 0; i < x.length; i++) { const c = x.charCodeAt(i); if (c < 48 || c > 57) return false; } return x.length > 0; };
+  const jS = s.slice(0, 4), mS = s.slice(5, 7), tS = s.slice(8, 10);
+  if (!nurZiffern(jS) || !nurZiffern(mS) || !nurZiffern(tS)) return null;
+  const j = Number(jS), m = Number(mS), t = Number(tS);
+  if (j < 2000 || j > 2999 || m < 1 || m > 12 || t < 1 || t > 31) return null;
+  const ms = Date.UTC(j, m - 1, t);
+  const rt = new Date(ms);
+  if (rt.getUTCFullYear() !== j || rt.getUTCMonth() !== m - 1 || rt.getUTCDate() !== t) return null;
+  const tage = Math.round((heute - ms) / 86400000);
+  return Number.isFinite(tage) ? tage : null;
+}
+(async () => {
+  const zeilen = document.querySelectorAll('a[data-slug]');
+  let pin = null;
+  try { pin = localStorage.getItem('packliste_pin'); } catch (e) {}
+  if (!pin) {
+    // Ohne PIN laesst sich der Stand nicht lesen - das aber sichtbar machen, statt still nichts anzuzeigen.
+    for (const a of zeilen) { const c = a.querySelector('.chip'); c.className = 'chip unknown'; c.textContent = 'STAND ?'; }
+    return;
+  }
+  for (const a of zeilen) { const c = a.querySelector('.chip'); c.className = 'chip pending'; c.textContent = 'PR\u00DCFE \u2026'; }
+  const n = new Date();
+  const heute = Date.UTC(n.getFullYear(), n.getMonth(), n.getDate());
+  for (const a of zeilen) {
+    const chip = a.querySelector('.chip');
+    let datum;
+    try { datum = await standVon(a.getAttribute('data-slug'), pin); }
+    catch (e) { chip.className = 'chip unknown'; chip.textContent = 'NICHT PR\u00DCFBAR'; continue; }
+    const tage = alterInTagen(datum, heute);
+    if (tage === '') { chip.className = 'chip none'; chip.textContent = 'KEINE LISTE'; }
+    else if (tage === null || tage < 0) { chip.className = 'chip pruef'; chip.textContent = 'DATUM PR\u00DCFEN'; }
+    else if (tage === 0) { chip.className = 'chip fresh'; chip.textContent = 'HEUTE'; }
+    else if (tage === 1) { chip.className = 'chip warn'; chip.textContent = 'GESTERN'; }
+    else { chip.className = 'chip old'; chip.textContent = tage + ' TAGE ALT'; a.classList.add('oldrow'); }
+  }
+})();
+</script>
 </body>
 </html>

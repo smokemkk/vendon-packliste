@@ -5,13 +5,27 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
 <title>OMS Packliste</title>
 <style>
-:root { --bg:#101418; --card:#1b222b; --fg:#f2f5f8; --dim:#8fa0b0; --acc:#33b5ff; --ok:#2ecc71; --warn:#f5a623; --line:#2a3542; }
+:root { --bg:#101418; --card:#1b222b; --fg:#f2f5f8; --dim:#8fa0b0; --acc:#33b5ff; --ok:#2ecc71; --warn:#f5a623; --line:#2a3542; --old:#ff3b30; --oldbg:#4d1210; }
 * { box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
 html,body { margin:0; background:var(--bg); color:var(--fg); font-family:system-ui,-apple-system,'Segoe UI',Roboto,sans-serif; }
 body { padding-bottom:132px; }
 header { position:sticky; top:0; z-index:5; background:var(--bg); padding:8px 10px 6px; border-bottom:1px solid var(--line); }
 .tourrow { display:flex; justify-content:space-between; align-items:baseline; }
 .tour { font-size:15px; font-weight:700; color:var(--acc); }
+.agebadge { display:none; margin-left:7px; padding:3px 8px; border-radius:8px; font-size:11px; font-weight:800; letter-spacing:.6px; vertical-align:middle; }
+.agebadge.fresh { display:inline-block; background:#12331f; color:var(--ok); border:1px solid var(--ok); }
+.agebadge.warn { display:inline-block; background:#3a2f14; color:var(--warn); border:1px solid var(--warn); }
+.agebadge.old { display:inline-block; background:var(--oldbg); color:#ffe2e0; border:1px solid var(--old); }
+.agebadge.pruef { display:inline-block; background:#3a2f14; color:var(--warn); border:1px solid var(--warn); }
+.agebadge.none { display:inline-block; background:var(--card); color:var(--dim); border:1px solid var(--line); }
+#agebar { display:none; margin:7px -10px 0; padding:11px 12px; font-size:15px; font-weight:800; line-height:1.35; text-align:center; }
+#agebar.warn { display:block; background:#3a2f14; color:var(--warn); border-top:2px solid var(--warn); border-bottom:2px solid var(--warn); }
+#agebar.old { display:block; background:var(--oldbg); color:#ffe2e0; border-top:3px solid var(--old); border-bottom:3px solid var(--old); animation:oldpulse 1.6s ease-in-out infinite; }
+#agebar .sub { display:block; margin-top:3px; font-size:13px; font-weight:600; opacity:.9; }
+@keyframes oldpulse { 0%,100%{ filter:brightness(1); } 50%{ filter:brightness(1.5); } }
+@media (prefers-reduced-motion: reduce) { #agebar.old { animation:none; } }
+body.veraltet header { background:var(--oldbg); border-bottom:3px solid var(--old); }
+body.veraltet .tour { color:#fff; }
 .prog { font-size:14px; color:var(--dim); font-variant-numeric:tabular-nums; }
 .prog b { color:var(--ok); } .prog i { color:var(--warn); font-style:normal; }
 .tabs { display:flex; gap:6px; overflow-x:auto; padding:8px 0 4px; scrollbar-width:none; }
@@ -102,8 +116,9 @@ h3.warn { color:var(--warn); }
 <input id="pin" inputmode="numeric" autocomplete="off" placeholder="&bull;&bull;&bull;&bull;&bull;&bull;">
 <button onclick="pinGo()">&Ouml;ffnen</button><div id="pinmsg"></div></div></div>
 <header>
-  <div class="tourrow"><span class="tour" id="ttl">&#128230; Packliste</span>
+  <div class="tourrow"><span><span class="tour" id="ttl">&#128230; Packliste</span><span class="agebadge" id="agebadge"></span></span>
     <span class="vbtns"><span class="heard" id="heard"></span><button class="vbtn" id="vb" onclick="toggleVoice()">&#128266;</button><button class="vbtn mic" id="mb" onclick="toggleMic()">&#127908;</button></span></div>
+  <div id="agebar" role="alert"></div>
   <div class="tourrow"><span></span><span class="prog" id="prog"></span></div>
   <div class="tabs" id="tabs"></div>
   <div class="bar"><div id="bar"></div></div>
@@ -141,6 +156,68 @@ document.addEventListener('keydown', e => { if (e.key === 'Enter' && document.ge
 function startApp(DATA) {
 document.getElementById('ttl').innerHTML = '&#128230; Packliste ' + DATA.tour + ' &middot; ' + (DATA.datum || '&#8211;');
 document.title = 'Packliste ' + DATA.tour + ' ' + (DATA.datum || '');
+// Alters-Kennzeichnung. Grundlage sind reine Kalendertage nach Geraetedatum (DST-unempfindlich);
+// eine exakte 24-Stunden-Rechnung ist mit dem Feld YYYY-MM-DD nicht moeglich.
+// Rueckgabe: Zahl = Alter in Tagen (negativ = Datum liegt in der Zukunft),
+//            '' = kein Datum (Platzhalter),  null = Datum unbrauchbar.
+const alterTage = (() => {
+  const s = String(DATA.datum || '');
+  if (s.length === 0) return '';
+  if (s.length !== 10 || s.charAt(4) !== '-' || s.charAt(7) !== '-') return null;
+  const nurZiffern = x => { for (let i = 0; i < x.length; i++) { const c = x.charCodeAt(i); if (c < 48 || c > 57) return false; } return x.length > 0; };
+  const jS = s.slice(0, 4), mS = s.slice(5, 7), tS = s.slice(8, 10);
+  if (!nurZiffern(jS) || !nurZiffern(mS) || !nurZiffern(tS)) return null;
+  const j = Number(jS), m = Number(mS), t = Number(tS);
+  if (j < 2000 || j > 2999 || m < 1 || m > 12 || t < 1 || t > 31) return null;
+  const ms = Date.UTC(j, m - 1, t);
+  const roundtrip = new Date(ms);
+  // faengt normalisierte Scheindaten ab (z. B. 2026-02-31 -> 03-03)
+  if (roundtrip.getUTCFullYear() !== j || roundtrip.getUTCMonth() !== m - 1 || roundtrip.getUTCDate() !== t) return null;
+  const jetzt = new Date();
+  const tage = Math.round((Date.UTC(jetzt.getFullYear(), jetzt.getMonth(), jetzt.getDate()) - ms) / 86400000);
+  return Number.isFinite(tage) ? tage : null;
+})();
+(function kennzeichneAlter() {
+  const bd = document.getElementById('agebadge'), br = document.getElementById('agebar');
+  const setBanner = (klasse, haupt, sub) => {
+    br.textContent = '';
+    br.className = klasse;
+    br.appendChild(document.createTextNode('\u26A0\uFE0F ' + haupt));
+    const s = document.createElement('span');
+    s.className = 'sub'; s.textContent = sub;
+    br.appendChild(s);
+  };
+  const dstr = typeof alterTage === 'number'
+    ? String(DATA.datum).slice(8, 10) + '.' + String(DATA.datum).slice(5, 7) + '.' + String(DATA.datum).slice(0, 4)
+    : '';
+  if (alterTage === '') { bd.className = 'agebadge none'; bd.textContent = 'KEINE LISTE'; return; }
+  if (alterTage === null) {
+    bd.className = 'agebadge pruef'; bd.textContent = 'DATUM PR\u00DCFEN';
+    setBanner('warn', 'Das Datum dieser Packliste ist unbrauchbar.', 'Stand nicht bestimmbar - vor dem Packen den aktuellen Stand pr\u00fcfen.');
+    document.title = 'DATUM PR\u00DCFEN - ' + document.title;
+    return;
+  }
+  if (alterTage < 0) {
+    bd.className = 'agebadge pruef'; bd.textContent = 'DATUM PR\u00DCFEN';
+    setBanner('warn', 'Das Datum dieser Packliste liegt in der Zukunft (' + dstr + ').',
+      'Stand nicht plausibel - vor dem Packen den aktuellen Stand pr\u00fcfen.');
+    document.title = 'DATUM PR\u00DCFEN - ' + document.title;
+    return;
+  }
+  if (alterTage === 0) { bd.className = 'agebadge fresh'; bd.textContent = 'HEUTE'; return; }
+  if (alterTage === 1) {
+    bd.className = 'agebadge warn'; bd.textContent = 'VON GESTERN';
+    setBanner('warn', 'Diese Packliste ist von GESTERN (' + dstr + ')',
+      'Pr\u00fcfen, ob inzwischen eine neue Liste ver\u00f6ffentlicht wurde.');
+    document.title = '(gestern) ' + document.title;
+    return;
+  }
+  bd.className = 'agebadge old'; bd.textContent = alterTage + ' TAGE ALT';
+  setBanner('old', 'VERALTETE PACKLISTE \u00B7 ' + alterTage + ' Tage alt (' + dstr + ')',
+    'Nicht nach dieser Liste packen, bevor der aktuelle Stand gepr\u00fcft ist.');
+  document.body.classList.add('veraltet');
+  document.title = 'VERALTET (' + alterTage + ' Tage) - ' + document.title;
+})();
 const KEY = 'packliste_' + DATA.datum + '_' + DATA.tour;
 let state = JSON.parse(LS.getItem(KEY) || '{"items":{},"part":{},"hist":[],"tab":0}');
 if (!state.items) state = {items:{},part:{},hist:[],tab:0};
