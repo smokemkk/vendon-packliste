@@ -260,9 +260,14 @@ function render() {
   }).join('') + `<div class="tab warn${state.tab===FEHLT?' act':''}" onclick="go(${FEHLT})">\u26a0 Fehlt (${mc})</div>`;
 
   const allT = DATA.machines.reduce((n,m)=>n+m.items.length,0);
-  const packedPos = DATA.machines.reduce((n,m)=>n+m.items.filter(it=>{const s=st(k(m,it));return s===1||s===3;}).length,0);
   const offen = DATA.machines.reduce((n,m)=>n+m.items.filter(it=>!st(k(m,it))).length,0);
-  document.getElementById('prog').innerHTML = `<b>${packedPos} \u2713</b>${mc?` \u00b7 <i>${mc} \u26a0</i>`:''} \u00b7 ${offen} offen`;
+  // Stueckzahl oben rechts (Nutzerwunsch 2026-09-24): gepackte Stueck / Bedarf gesamt.
+  // Status 1 = ganze Menge, Status 3 = Teilmenge, Status 2 = nichts gepackt.
+  const stkGes = DATA.machines.reduce((n,m)=>n+m.items.reduce((a,it)=>a+it.qty,0),0);
+  const stkGep = DATA.machines.reduce((n,m)=>n+m.items.reduce((a,it)=>{const s=st(k(m,it));return a+(s===1?it.qty:s===3?Math.min(partOf(k(m,it)),it.qty):0);},0),0);
+  // Fehlende Stueck = Summe der Fehlmengen (wie Fehlt-Tab/Meldung), nur anzeigen wenn > 0.
+  const stkFehlt = missList().reduce((a,e)=>a+e.miss,0);
+  document.getElementById('prog').innerHTML = `<b>${stkGep}</b> / ${stkGes} St\u00fcck${stkFehlt?` \u00b7 <i>${stkFehlt} \u26a0</i>`:''}`;
   document.getElementById('bar').style.width = allT ? ((allT-offen)/allT*100)+'%' : '100%';
   document.getElementById('undo').disabled = !state.hist.length;
 
