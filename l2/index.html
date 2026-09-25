@@ -255,8 +255,10 @@ function render() {
   const mc = missList().length;
   document.getElementById('tabs').innerHTML = DATA.machines.map((mm,i) => {
     const r = rest(mm);
+    // Offene Stueck je Kiste (Nutzerwunsch 2026-09-25, passend zur Stueckzahl im Kopf).
+    const rStk = mm.items.reduce((a,it)=>a+(st(k(mm,it))?0:it.qty),0);
     const cls = 'tab' + (i===state.tab?' act':'') + (r===0?' done':'');
-    return `<div class="${cls}" onclick="go(${i})">${i+1}\u00b7${esc(mm.label)}${r===0?' \u2713':' ('+r+')'}</div>`;
+    return `<div class="${cls}" onclick="go(${i})">${i+1}\u00b7${esc(mm.label)}${r===0?' \u2713':' ('+rStk+' Stk.)'}</div>`;
   }).join('') + `<div class="tab warn${state.tab===FEHLT?' act':''}" onclick="go(${FEHLT})">\u26a0 Fehlt (${mc})</div>`;
 
   const allT = DATA.machines.reduce((n,m)=>n+m.items.length,0);
