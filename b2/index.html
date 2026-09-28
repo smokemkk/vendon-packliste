@@ -366,7 +366,27 @@ function flowApp(DATA) {
   // Wurde am selben Tag ein geaenderter Plan veroeffentlicht, kann eine gespeicherte
   // Schritt-ID nicht mehr existieren -> Timer sauber loslassen, Auto-Start unten greift.
   const STEP_IDS = {}; STEPS.forEach(s => { STEP_IDS[s.id] = 1; });
-  if (state.aktiv && !STEP_IDS[state.aktiv]) { state.aktiv = null; state.seit = null; }
+  // Migration alter Tagesstaende: An gebuendelten Laden-Standorten wandern Zeit und Status
+  // frueherer Einzel-Schritte 5/6/7 (a<dev>_<nr>) in den jeweiligen Buendel-Schritt.
+  (P.standorte || []).forEach((st, si) => {
+    [5, 6, 7].forEach(nr => {
+      const gid = 's' + si + '_' + nr + 'g';
+      if (!STEP_IDS[gid]) return;
+      const alt = (st.devs || []).map(d => 'a' + d + '_' + nr);
+      const hatStatus = alt.some(id => state.done[id] || state.skipd[id] || state.zeit[id]);
+      if (!hatStatus) return;
+      const alleErledigt = alt.every(id => state.done[id] || state.skipd[id]);
+      let zeitSum = 0;
+      alt.forEach(id => {
+        if (state.zeit[id]) { zeitSum += state.zeit[id]; }
+        delete state.zeit[id]; delete state.done[id]; delete state.skipd[id];
+      });
+      if (zeitSum) state.zeit[gid] = (state.zeit[gid] || 0) + zeitSum;
+      if (alleErledigt && !state.done[gid] && !state.skipd[gid]) state.done[gid] = 1;
+    });
+  });
+  let aktivVerwaist = false;
+  if (state.aktiv && !STEP_IDS[state.aktiv]) { state.aktiv = null; state.seit = null; aktivVerwaist = true; }
   // Existiert die aktive Schritt-ID noch, den (index-basierten) state.step darauf
   // ausrichten - neu eingefuegte Schritte verschieben sonst gespeicherte Indizes.
   if (state.aktiv) {
@@ -441,9 +461,11 @@ function flowApp(DATA) {
     if (n < 0) { state.aktiv = null; springTop = true; save(); render(); }
     else laufe(n);
   };
-  // Automatischer Timer-Start beim Oeffnen (nicht waehrend einer Pause).
+  // Automatischer Timer-Start beim Oeffnen (nicht waehrend einer Pause). Nach einer
+  // verwaisten Schritt-ID (Plan-Wechsel) ist der gespeicherte Index nicht verlaesslich
+  // -> dann immer am ersten offenen Schritt ankern.
   if (!state.aktiv && !state.pausiert && naechsterOffen(0) >= 0) {
-    const first = (!state.done[STEPS[state.step].id] && !state.skipd[STEPS[state.step].id]) ? state.step : naechsterOffen(0);
+    const first = (!aktivVerwaist && !state.done[STEPS[state.step].id] && !state.skipd[STEPS[state.step].id]) ? state.step : naechsterOffen(0);
     state.step = first; state.aktiv = STEPS[first].id; state.seit = Date.now();
   }
 
