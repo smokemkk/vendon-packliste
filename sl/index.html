@@ -346,6 +346,12 @@ function flowApp(DATA) {
   // Schritt-ID nicht mehr existieren -> Timer sauber loslassen, Auto-Start unten greift.
   const STEP_IDS = {}; STEPS.forEach(s => { STEP_IDS[s.id] = 1; });
   if (state.aktiv && !STEP_IDS[state.aktiv]) { state.aktiv = null; state.seit = null; }
+  // Existiert die aktive Schritt-ID noch, den (index-basierten) state.step darauf
+  // ausrichten - neu eingefuegte Schritte verschieben sonst gespeicherte Indizes.
+  if (state.aktiv) {
+    const i = STEPS.findIndex(s => s.id === state.aktiv);
+    if (i >= 0) state.step = i;
+  }
 
   // ---- Timer ----
   const ist = id => (state.zeit[id] || 0) + (state.aktiv === id && state.seit ? (Date.now() - state.seit) / 1000 : 0);
