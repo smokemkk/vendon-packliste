@@ -285,7 +285,7 @@ function flowApp(DATA) {
   if (!state.zeit) state.zeit = {};
   if (typeof state.tab !== 'number') state.tab = 0;      // Kisten-Tab im Pack-Schritt
   if (typeof state.step !== 'number') state.step = 0;    // Index in STEPS
-  if (typeof state.view !== 'number') state.view = 0;    // 0 = Ablauf, 1 = Fehlt
+  if (typeof state.view !== 'number') state.view = 0;    // 0 = Ablauf, 1 = Fehlt, 2 = Zeit
   if (typeof state.pauseSum !== 'number') state.pauseSum = 0;  // Pausen-Sekunden gesamt
   const save = () => LS.setItem(KEY, JSON.stringify(state));
 
@@ -319,6 +319,9 @@ function flowApp(DATA) {
   STEPS.push({id: 't1', nr: 1, t: titel(1), sub: 'Alle Kisten dieser Tour', mode: 'pack', soll: sollMin(1, stkGes)});
   if ((P.todos || 0) > 0) STEPS.push({id: 't2', nr: 2, t: titel(2), sub: 'Nur bei Bedarf', skip: 1, soll: sollMin(2, P.todos)});
   STEPS.push({id: 't3', nr: 3, t: titel(3), soll: sollMin(3, 1)});
+  // Fester Kontroll-Schritt ohne Soll (nicht Teil der Soll-Tabelle): vor der Abfahrt
+  // pruefen, dass alles verschlossen ist und das Licht aus ist.
+  STEPS.push({id: 't3a', nr: '3a', t: 'Lager abschlie\u00dfen', sub: 'Alles zu? Licht aus?', soll: 0});
   const seen = {};
   (P.standorte || []).forEach((st, si) => {
     const devs = (st.devs || []).filter(d => M_BY_DEV[d] != null);
@@ -655,6 +658,13 @@ function flowApp(DATA) {
       zeilen.push({nr, name: titel(nr), anz: steps.length, ist: istM,
                    soll, mp: soll * (1 + pufVon(nr)), annahme: (nr === 8 || nr === 9)});
     }
+    // Feste Kontroll-Schritte ohne Soll (String-Nr., z. B. "3a") an passender Stelle einreihen.
+    STEPS.forEach(s => {
+      if (typeof s.nr !== 'string') return;
+      const zeile = {nr: s.nr, name: s.t, anz: 1, ist: ist(s.id) / 60, soll: 0, mp: 0, annahme: false, ohneSoll: true};
+      const pos = zeilen.findIndex(z => typeof z.nr === 'number' && z.nr > parseInt(s.nr, 10));
+      if (pos < 0) zeilen.push(zeile); else zeilen.splice(pos, 0, zeile);
+    });
     return zeilen;
   }
   function zeitUebersicht() {
@@ -666,9 +676,9 @@ function flowApp(DATA) {
     let h = '<h3>Zeit-\u00dcbersicht \u2013 Selbstkontrolle</h3><div class="steps">';
     h += `<div class="srow kopf"><span class="snr"></span><span class="snm">T\u00e4tigkeit</span><span class="z3">Ist</span><span class="z3">Soll</span><span class="z3">+Puffer</span></div>`;
     for (const z of zeilen) {
-      const kl = z.ist > z.mp ? 'istover' : z.ist > z.soll ? 'istwarn' : (z.ist > 0 ? 'istok' : '');
+      const kl = z.ohneSoll ? (z.ist > 0 ? 'istok' : '') : (z.ist > z.mp ? 'istover' : z.ist > z.soll ? 'istwarn' : (z.ist > 0 ? 'istok' : ''));
       h += `<div class="srow"><span class="snr">${z.nr}</span><span class="snm">${esc(z.name)}${z.annahme ? '<small>Soll = Tour-Annahme</small>' : (z.anz > 1 ? '<small>' + z.anz + ' Schritte</small>' : '')}</span>` +
-        `<span class="z3 ${kl}">${fmtM(z.ist)}</span><span class="z3">${fmtM(z.soll)}</span><span class="z3">${fmtM(z.mp)}</span></div>`;
+        `<span class="z3 ${kl}">${fmtM(z.ist)}</span><span class="z3">${z.ohneSoll ? '\u2013' : fmtM(z.soll)}</span><span class="z3">${z.ohneSoll ? '\u2013' : fmtM(z.mp)}</span></div>`;
     }
     h += `<div class="srow summe"><span class="snr">\u03a3</span><span class="snm">GESAMT (min)</span>` +
       `<span class="z3 ${istKl(istM)}">${fmtM(istM)}</span><span class="z3">${fmtM(sollOhne)}</span><span class="z3">${fmtM(sollMit)}</span></div>`;
