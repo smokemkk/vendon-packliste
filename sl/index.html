@@ -141,6 +141,8 @@ h3.warn { color:var(--warn); }
 .navtab.warn.act { background:var(--warn); color:#3a2a00; }
 .stepback { flex:0 0 auto; align-self:center; padding:13px 12px; font-size:15px; font-weight:800; border-radius:12px; border:1.5px solid var(--dim); background:var(--card); color:var(--fg); }
 .stepback:disabled { opacity:.35; }
+.stepback.pause.on { border-color:var(--warn); color:var(--warn); background:#3a2f14; }
+.pausenote { margin-top:8px; padding:8px 10px; border-radius:10px; background:#3a2f14; color:var(--warn); font-weight:800; font-size:14px; text-align:center; }
 .fertigbtn { flex:1; padding:15px 8px; font-size:19px; font-weight:800; border:0; border-radius:12px; background:var(--ok); color:#03210f; }
 .fertigbtn:disabled { opacity:.45; }
 .fillhint { margin:10px 2px 2px; font-size:13px; color:var(--dim); line-height:1.45; }
@@ -280,6 +282,7 @@ function flowApp(DATA) {
   if (typeof state.tab !== 'number') state.tab = 0;      // Kisten-Tab im Pack-Schritt
   if (typeof state.step !== 'number') state.step = 0;    // Index in STEPS
   if (typeof state.view !== 'number') state.view = 0;    // 0 = Ablauf, 1 = Fehlt
+  if (typeof state.pauseSum !== 'number') state.pauseSum = 0;  // Pausen-Sekunden gesamt
   const save = () => LS.setItem(KEY, JSON.stringify(state));
 
   // ---- Schritt-Liste aufbauen ----
@@ -349,7 +352,26 @@ function flowApp(DATA) {
     if (state.aktiv && state.seit) state.zeit[state.aktiv] = (state.zeit[state.aktiv] || 0) + (Date.now() - state.seit) / 1000;
     state.aktiv = null; state.seit = null;
   }
+  // Pause: haelt den Schritt-Timer an, die Pausenzeit laeuft separat mit (fuers Protokoll).
+  function endePause() {
+    if (state.pausiert && state.pauseSeit) state.pauseSum += (Date.now() - state.pauseSeit) / 1000;
+    state.pausiert = 0; state.pauseSeit = null;
+  }
+  const pauseIst = () => (state.pauseSum || 0) + (state.pausiert && state.pauseSeit ? (Date.now() - state.pauseSeit) / 1000 : 0);
+  window.togglePause = () => {
+    if (state.pausiert) {
+      endePause();
+      const s = STEPS[state.step];
+      if (!state.done[s.id] && !state.skipd[s.id]) { state.aktiv = s.id; state.seit = Date.now(); }
+    } else {
+      stopTimer();
+      state.pausiert = 1; state.pauseSeit = Date.now();
+    }
+    if (navigator.vibrate) navigator.vibrate(20);
+    save(); render();
+  };
   function laufe(i) {
+    endePause();
     stopTimer();
     state.step = i;
     const s = STEPS[i];
@@ -369,7 +391,7 @@ function flowApp(DATA) {
   window.fertig = () => {
     const s = STEPS[state.step];
     if (s.mode === 'pack' && offenPack() > 0) return;
-    stopTimer(); state.done[s.id] = 1;
+    endePause(); stopTimer(); state.done[s.id] = 1;
     if (navigator.vibrate) navigator.vibrate(30);
     const n = naechsterOffen(state.step + 1);
     if (n < 0) { state.aktiv = null; save(); render(); speak('Tour fertig. Stark!'); }
@@ -377,13 +399,13 @@ function flowApp(DATA) {
   };
   window.skipStep = () => {
     const s = STEPS[state.step];
-    stopTimer(); state.skipd[s.id] = 1;
+    endePause(); stopTimer(); state.skipd[s.id] = 1;
     const n = naechsterOffen(state.step + 1);
     if (n < 0) { state.aktiv = null; save(); render(); }
     else laufe(n);
   };
-  // Automatischer Timer-Start beim Oeffnen.
-  if (!state.aktiv && naechsterOffen(0) >= 0) {
+  // Automatischer Timer-Start beim Oeffnen (nicht waehrend einer Pause).
+  if (!state.aktiv && !state.pausiert && naechsterOffen(0) >= 0) {
     const first = (!state.done[STEPS[state.step].id] && !state.skipd[STEPS[state.step].id]) ? state.step : naechsterOffen(0);
     state.step = first; state.aktiv = STEPS[first].id; state.seit = Date.now();
   }
@@ -480,7 +502,10 @@ function flowApp(DATA) {
     const sollTxt = s.fahrt
       ? `Fahrzeit gesamt<br><b>${fmtM(fahrtIst() / 60)}</b> / ${fmtM(P.fahrzeit || 0)} min`
       : (s.soll ? (s.ev ? `Soll je Ereignis<br><b>${fmtM(s.soll)} min</b>` : `Soll<br><b>${fmtM(s.soll)} min</b>`) : '');
-    return `<div class="tmrrow"><span class="${tmrKlasse(s)}" id="tmr">${fmtClock(ist(s.id))}</span><span class="soll">${sollTxt}</span></div>`;
+    const pauseH = state.pausiert
+      ? `<div class="pausenote">\u23f8 PAUSE \u2013 Timer angehalten (${fmtM(pauseIst() / 60)} min) \u00b7 \u25b6 zum Weitermachen</div>`
+      : '';
+    return `<div class="tmrrow"><span class="${tmrKlasse(s)}" id="tmr">${fmtClock(ist(s.id))}</span><span class="soll">${sollTxt}</span></div>${pauseH}`;
   }
   function packUI(h) {
     const FEHLTN = DATA.machines.length;
@@ -561,7 +586,7 @@ function flowApp(DATA) {
     const stkGep = DATA.machines.reduce((n, m) => n + m.items.reduce((a, it) => { const s2 = st(k(m, it)); return a + (s2 === 1 ? it.qty : s2 === 3 ? Math.min(partOf(k(m, it)), it.qty) : 0); }, 0), 0);
     const stkFehlt = missList().reduce((a, e) => a + e.miss, 0);
     document.getElementById('prog').innerHTML = `<b>${stkGep}</b> / ${stkGes} St\u00fcck${stkFehlt ? ` \u00b7 <i>${stkFehlt} \u26a0</i>` : ''}`;
-    document.getElementById('zeitges').innerHTML = `\u23f1 <b>${fmtM(istGes() / 60)}</b> / ${fmtM(sollGesMin)} min`;
+    document.getElementById('zeitges').innerHTML = `${state.pausiert ? '\u23f8 ' : '\u23f1 '}<b>${fmtM(istGes() / 60)}</b> / ${fmtM(sollGesMin)} min`;
     const doneN = STEPS.filter(s => state.done[s.id] || state.skipd[s.id]).length;
     document.getElementById('bar').style.width = (doneN / STEPS.length * 100) + '%';
 
@@ -609,7 +634,8 @@ function flowApp(DATA) {
       : `<button class="fertigbtn" onclick="fertig()">\u2713 Fertig \u2013 weiter</button>`;
     const sBtn = s.skip ? `<button class="skipbtn" style="flex:0 0 auto" onclick="skipStep()">\u00dcberspringen</button>` : '';
     const uBtn = (s.mode === 'pack' || s.mode === 'fill') ? `<button class="undo" id="undo" onclick="undo()" ${state.hist.length ? '' : 'disabled'}>\u21a9</button>` : '';
-    document.getElementById('botbar').innerHTML = `<button class="stepback" onclick="stepZurueck()" ${state.step ? '' : 'disabled'}>\u2039</button>${uBtn}${sBtn}${fBtn}`;
+    const pBtn = `<button class="stepback pause${state.pausiert ? ' on' : ''}" onclick="togglePause()">${state.pausiert ? '\u25b6' : '\u23f8'}</button>`;
+    document.getElementById('botbar').innerHTML = `<button class="stepback" onclick="stepZurueck()" ${state.step ? '' : 'disabled'}>\u2039</button>${pBtn}${uBtn}${sBtn}${fBtn}`;
     save();
     window.scrollTo(0, 0);
   }
@@ -652,6 +678,7 @@ function flowApp(DATA) {
     txt += '\nBedarfs-Annahmen je Tour (im Gesamt-Soll): Nr 8 \u00d7 ' + (P.muenz || 0) + ' = ' + fmtM((P.muenz || 0) * sollMin(8, 1))
       + ' min \u00b7 Nr 9 \u00d7 ' + (P.todos || 0) + ' = ' + fmtM((P.todos || 0) * sollMin(9, 1)) + ' min\n';
     txt += 'Fahrzeit gesamt: Ist ' + fmtM(fahrtIst() / 60) + ' min \u00b7 Soll ' + fmtM(P.fahrzeit || 0) + ' min\n';
+    txt += 'Pausen gesamt: ' + fmtM(pauseIst() / 60) + ' min (nicht in den Schritt-Zeiten enthalten)\n';
     txt += 'GESAMT: Ist ' + fmtM(istGes() / 60) + ' min \u00b7 Soll ' + fmtM(sollGesMin) + ' min\n';
     await teile('Zeit-Protokoll Lagerliste ' + DATA.tour, txt);
   };
@@ -728,6 +755,8 @@ function flowApp(DATA) {
   }
   function handleVoice(t) {
     if (state.view !== 0) { if (/zur\u00fcck/.test(t)) zeigeView(0); return; }
+    if (/\bpause\b/.test(t)) { if (!state.pausiert) togglePause(); return; }
+    if (state.pausiert) { if (/weiter|fortsetzen/.test(t)) togglePause(); return; }
     const s = STEPS[state.step];
     const m = aktuelleMaschine();
     if (/schritt fertig|fertig weiter|weiter jetzt/.test(t)) { fertig(); return; }
