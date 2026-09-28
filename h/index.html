@@ -255,11 +255,9 @@ function startApp(DATA) {
   else { legacyApp(DATA); }
 }
 
-// ==================== NEU: Lagerliste (Taetigkeiten-Flow mit Timern) ====================
-// Ein einziger gefuehrter Tour-Ablauf nach Taetigkeitenkatalog (Nutzerauftrag 2026-09-28):
-// Lager (Nr. 1-3) -> je Standort: je Automat (Nr. 5-12, 14) + Standort-Abschluss (13, 15, 16)
-// -> Lager (Nr. 17-18). Timer starten automatisch beim Schritt und stoppen beim Abhaken.
-// Sollzeiten kommen frisch berechnet aus dem Payload (Katalog x gebuchte Mengen des Tages).
+// ==================== Ablauf-Modus (Lagerliste) ====================
+// Gefuehrte Schritte mit Timern. Schritt-Titel und Sollwerte kommen aus den
+// verschluesselten Daten; hier steht nur neutrale Ablauf-Mechanik.
 function flowApp(DATA) {
   kennzeichneAlter(DATA, 'Lagerliste');
   const P = DATA.plan;
@@ -285,7 +283,9 @@ function flowApp(DATA) {
   const save = () => LS.setItem(KEY, JSON.stringify(state));
 
   // ---- Schritt-Liste aufbauen ----
+  // Schritt-Titel kommen aus den entschluesselten Daten (P.taet[nr].n), nichts steht statisch hier.
   const T = n => (P.taet || {})[String(n)] || null;
+  const titel = n => { const t = T(n); return t && t.n ? String(t.n).replace(/\s*\([^)]*\)\s*$/, '') : 'Schritt ' + n; };
   const sollMin = (n, menge) => { const t = T(n); if (!t) return 0; let v = t.s * menge; if (String(t.e).charAt(0) === 's') v /= 60; return v; };
   const pufVon = n => { const t = T(n); return (t && typeof t.p === 'number') ? t.p : 0.1; };
   const M_BY_DEV = {}; DATA.machines.forEach((m, i) => { M_BY_DEV[m.device] = i; });
@@ -296,46 +296,55 @@ function flowApp(DATA) {
   const autoBlock = (dev) => {
     const mi = M_BY_DEV[dev]; if (mi == null) return;
     const m = DATA.machines[mi];
-    const add = (nr, titel, o) => STEPS.push(Object.assign({id: 'a' + dev + '_' + nr, nr, t: titel, sub: m.label, dev, mi}, o || {}));
-    add(5, 'Kisten hin & Automat \u00f6ffnen', {soll: sollMin(5, 1)});
-    add(6, 'M\u00fcnzgeld & Scheine entnehmen', {soll: sollMin(6, 1)});
-    add(7, 'M\u00fcnzstau & Fehlerprotokoll pr\u00fcfen', {soll: sollMin(7, 1)});
-    add(8, 'M\u00fcnzgeld bef\u00fcllen', {skip: 1, soll: sollMin(8, 1)});
-    add(9, 'ToDos am Automat erledigen', {skip: 1, soll: sollMin(9, 1)});
-    add(10, 'Automat bef\u00fcllen', {mode: 'fill', soll: sollMin(10, stkVon(m))});
-    add(11, 'Automat schlie\u00dfen', {soll: sollMin(11, 1)});
-    add(12, 'Schlusscheck', {soll: sollMin(12, 1)});
-    add(14, 'Grobe Reinigung', {soll: sollMin(14, 1)});
+    const add = (nr, o) => STEPS.push(Object.assign({id: 'a' + dev + '_' + nr, nr, t: titel(nr), sub: m.label, dev, mi}, o || {}));
+    add(5, {soll: sollMin(5, 1)});
+    add(6, {soll: sollMin(6, 1)});
+    add(7, {soll: sollMin(7, 1)});
+    // Bedarfs-Schritte: Sollzeit gilt JE EREIGNIS (ev:1) und zaehlt nicht je Automat in die
+    // Gesamt-Sollzeit; dort gehen stattdessen die Mengen-Annahmen der Tour ein (s. sollGesMin).
+    add(8, {skip: 1, ev: 1, soll: sollMin(8, 1)});
+    add(9, {skip: 1, ev: 1, soll: sollMin(9, 1)});
+    add(10, {mode: 'fill', soll: sollMin(10, stkVon(m))});
+    add(11, {soll: sollMin(11, 1)});
+    add(12, {soll: sollMin(12, 1)});
+    add(14, {soll: sollMin(14, 1)});
   };
-  STEPS.push({id: 't1', nr: 1, t: 'Kisten packen', sub: 'Lager \u00b7 alle Kisten dieser Tour', mode: 'pack', soll: sollMin(1, stkGes)});
-  if ((P.todos || 0) > 0) STEPS.push({id: 't2', nr: 2, t: 'Zubeh\u00f6r packen (ToDos)', sub: 'Lager \u00b7 nur bei Bedarf', skip: 1, soll: sollMin(2, P.todos)});
-  STEPS.push({id: 't3', nr: 3, t: 'Kisten ins Auto packen', sub: 'Lager', soll: sollMin(3, 1)});
+  STEPS.push({id: 't1', nr: 1, t: titel(1), sub: 'Alle Kisten dieser Tour', mode: 'pack', soll: sollMin(1, stkGes)});
+  if ((P.todos || 0) > 0) STEPS.push({id: 't2', nr: 2, t: titel(2), sub: 'Nur bei Bedarf', skip: 1, soll: sollMin(2, P.todos)});
+  STEPS.push({id: 't3', nr: 3, t: titel(3), soll: sollMin(3, 1)});
   const seen = {};
   (P.standorte || []).forEach((st, si) => {
     const devs = (st.devs || []).filter(d => M_BY_DEV[d] != null);
     if (!devs.length) return;
-    fahrtN++; STEPS.push({id: 'f' + fahrtN, nr: 4, t: 'Fahren', sub: '\u2192 ' + st.name, fahrt: 1});
+    fahrtN++; STEPS.push({id: 'f' + fahrtN, nr: 4, t: titel(4), sub: '\u2192 ' + st.name, fahrt: 1});
     devs.forEach(dev => { seen[dev] = 1; autoBlock(dev); });
-    STEPS.push({id: 's' + si + '_13', nr: 13, t: 'M\u00fcll wechseln', sub: st.name, soll: sollMin(13, 1)});
-    STEPS.push({id: 's' + si + '_15', nr: 15, t: 'Kehren', sub: st.name, soll: sollMin(15, 1)});
-    if (st.kiosk) STEPS.push({id: 's' + si + '_16', nr: 16, t: 'Wischen (Kioskladen)', sub: st.name, soll: sollMin(16, 1)});
+    STEPS.push({id: 's' + si + '_13', nr: 13, t: titel(13), sub: st.name, soll: sollMin(13, 1)});
+    STEPS.push({id: 's' + si + '_15', nr: 15, t: titel(15), sub: st.name, soll: sollMin(15, 1)});
+    if (st.kiosk) STEPS.push({id: 's' + si + '_16', nr: 16, t: titel(16), sub: st.name, soll: sollMin(16, 1)});
   });
-  // Sicherheitsnetz: Automaten, die in keinem Standort auftauchen, bekommen trotzdem ihren Block.
+  // Sicherheitsnetz: Automaten, die in keiner Gruppe auftauchen, bekommen trotzdem ihren Block.
   DATA.machines.forEach(m => {
     if (seen[m.device]) return;
-    fahrtN++; STEPS.push({id: 'f' + fahrtN, nr: 4, t: 'Fahren', sub: '\u2192 ' + m.label, fahrt: 1});
+    fahrtN++; STEPS.push({id: 'f' + fahrtN, nr: 4, t: titel(4), sub: '\u2192 ' + m.label, fahrt: 1});
     autoBlock(m.device);
   });
-  fahrtN++; STEPS.push({id: 'f' + fahrtN, nr: 4, t: 'Fahren', sub: '\u2192 zur\u00fcck ins Lager', fahrt: 1});
-  STEPS.push({id: 't17', nr: 17, t: 'Auto entladen', sub: 'Lager \u00b7 Geld in Tresor, M\u00fcll, Restware', soll: sollMin(17, 1)});
-  STEPS.push({id: 't18', nr: 18, t: 'Abschlie\u00dfen & fertig', sub: 'Lager', soll: sollMin(18, 1)});
+  fahrtN++; STEPS.push({id: 'f' + fahrtN, nr: 4, t: titel(4), sub: '\u2192 zur\u00fcck', fahrt: 1});
+  STEPS.push({id: 't17', nr: 17, t: titel(17), soll: sollMin(17, 1)});
+  STEPS.push({id: 't18', nr: 18, t: titel(18), soll: sollMin(18, 1)});
   if (state.step >= STEPS.length) state.step = 0;
+  // Wurde am selben Tag ein geaenderter Plan veroeffentlicht, kann eine gespeicherte
+  // Schritt-ID nicht mehr existieren -> Timer sauber loslassen, Auto-Start unten greift.
+  const STEP_IDS = {}; STEPS.forEach(s => { STEP_IDS[s.id] = 1; });
+  if (state.aktiv && !STEP_IDS[state.aktiv]) { state.aktiv = null; state.seit = null; }
 
   // ---- Timer ----
   const ist = id => (state.zeit[id] || 0) + (state.aktiv === id && state.seit ? (Date.now() - state.seit) / 1000 : 0);
   const istGes = () => STEPS.reduce((a, s) => a + ist(s.id), 0);
   const fahrtIst = () => STEPS.filter(s => s.fahrt).reduce((a, s) => a + ist(s.id), 0);
-  const sollGesMin = STEPS.reduce((a, s) => a + (s.soll || 0), 0) + (P.fahrzeit || 0);
+  // Gesamt-Soll: feste Schritte je Vorkommen; Fahrten als Tour-Budget; Bedarfs-Schritte (ev)
+  // NICHT je Automat, sondern ueber die Mengen-Annahmen der Tour (todos/muenz).
+  const sollGesMin = STEPS.reduce((a, s) => a + ((s.ev || s.fahrt) ? 0 : (s.soll || 0)), 0)
+    + (P.fahrzeit || 0) + (P.muenz || 0) * sollMin(8, 1) + (P.todos || 0) * sollMin(9, 1);
   function stopTimer() {
     if (state.aktiv && state.seit) state.zeit[state.aktiv] = (state.zeit[state.aktiv] || 0) + (Date.now() - state.seit) / 1000;
     state.aktiv = null; state.seit = null;
@@ -373,7 +382,7 @@ function flowApp(DATA) {
     if (n < 0) { state.aktiv = null; save(); render(); }
     else laufe(n);
   };
-  // Automatischer Timer-Start beim Oeffnen (Nutzerauftrag: "automatisch laufender Timer").
+  // Automatischer Timer-Start beim Oeffnen.
   if (!state.aktiv && naechsterOffen(0) >= 0) {
     const first = (!state.done[STEPS[state.step].id] && !state.skipd[STEPS[state.step].id]) ? state.step : naechsterOffen(0);
     state.step = first; state.aktiv = STEPS[first].id; state.seit = Date.now();
@@ -434,6 +443,14 @@ function flowApp(DATA) {
     return (h ? h + ':' + p(m) : m) + ':' + p(s2);
   };
   const tmrKlasse = s => {
+    if (s.fahrt) {
+      const b = P.fahrzeit || 0;
+      if (!b) return 'tmr';
+      const m = fahrtIst() / 60;
+      if (m > b * (1 + pufVon(4))) return 'tmr o';
+      if (m > b) return 'tmr w';
+      return 'tmr';
+    }
     if (!s.soll) return 'tmr';
     const m = ist(s.id) / 60;
     if (m > s.soll * (1 + pufVon(s.nr))) return 'tmr o';
@@ -462,7 +479,7 @@ function flowApp(DATA) {
   function timerStreifen(s) {
     const sollTxt = s.fahrt
       ? `Fahrzeit gesamt<br><b>${fmtM(fahrtIst() / 60)}</b> / ${fmtM(P.fahrzeit || 0)} min`
-      : (s.soll ? `Soll<br><b>${fmtM(s.soll)} min</b>` : '');
+      : (s.soll ? (s.ev ? `Soll je Ereignis<br><b>${fmtM(s.soll)} min</b>` : `Soll<br><b>${fmtM(s.soll)} min</b>`) : '');
     return `<div class="tmrrow"><span class="${tmrKlasse(s)}" id="tmr">${fmtClock(ist(s.id))}</span><span class="soll">${sollTxt}</span></div>`;
   }
   function packUI(h) {
@@ -508,16 +525,16 @@ function flowApp(DATA) {
   }
   function fillUI(h, s) {
     const m = DATA.machines[s.mi];
-    h += `<div class="fillhint">Alles rein wie gepackt. Passt etwas <b>nicht in den Automat</b> oder stimmt der Bestand nicht? Position antippen bzw. \u201efehlt\u201c \u2013 die Abweichung landet in der Fehlt-Meldung und der Bestand wird korrigiert.</div>`;
+    h += `<div class="fillhint">Alles rein wie gepackt. Passt etwas <b>nicht rein</b> oder stimmt der Bestand nicht? Direkt hier korrigieren: \u2248 = Teilmenge, \u2717 = fehlt komplett \u2013 die Abweichung landet in der Fehlt-Meldung und der Bestand wird korrigiert.</div>`;
     h += '<ul>' + m.items.map(it => {
-      const s2 = st(k(m, it));
-      if (ui.pickKey === k(m, it)) return `<li style="display:block">${partPicker(it, k(m, it))}</li>`;
-      if (s2 === 1) return row(m, it, 'done', '\u2713', true);
+      const key = k(m, it), s2 = st(key);
+      if (ui.pickKey === key) return `<li style="display:block">${partPicker(it, key)}</li>`;
       if (s2 === 2) return row(m, it, 'miss', '!', false);
-      if (s2 === 3) return row(m, it, 'miss', '\u00bd', false, '\u00d7 ' + missQty(m, it), partOf(k(m, it)) + ' \u00b7 Rest fehlt');
-      return row(m, it, '', '', true);
+      if (s2 === 3) return row(m, it, 'miss', '\u00bd', false, '\u00d7 ' + missQty(m, it), partOf(key) + ' \u00b7 Rest fehlt');
+      const btns = `<button class="xbtn" onclick="event.stopPropagation();startPart('${key}',${it.qty})">\u2248</button><button class="xbtn" onclick="event.stopPropagation();mark('${key}',2)">\u2717</button>`;
+      const cls = s2 === 1 ? 'done' : '';
+      return `<li class="${cls}" onclick="mark('${key}',${s2 ? 0 : 1})"><span class="box">${s2 === 1 ? '\u2713' : ''}</span><span class="sel">${selTxt(it)}</span><span class="nm">${esc(it.name)}<span class="art">${esc(it.art)}</span></span>${btns}<span class="qty">\u00d7 ${it.qty}</span></li>`;
     }).join('') + '</ul>';
-    h += `<div class="hint">Teilmenge am Automat: Position antippen (\u00f6ffnet sie wieder) und dann \u201e\u2248 Teilmenge\u201c im Lager-Schritt nutzen \u2013 oder direkt \u201efehlt\u201c, wenn nichts reinpasst.</div>`;
     return h;
   }
   function ablaufListe(h) {
