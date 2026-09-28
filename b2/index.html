@@ -442,8 +442,9 @@ function flowApp(DATA) {
     const s = STEPS[i];
     delete state.done[s.id]; delete state.skipd[s.id];
     state.aktiv = s.id; state.seit = Date.now();
-    state.view = 0;
-    springTop = true;
+    // Bewusst KEIN Sprung an den Seitenanfang: die Ansicht bleibt, wo der Nutzer gerade
+    // arbeitet (Karte oben ODER Ablauf-Liste); nur ein Ansichtswechsel scrollt nach oben.
+    if (state.view !== 0) { state.view = 0; springTop = true; }
     save(); render(); ansageSchritt();
   }
   const naechsterOffen = from => {
@@ -460,14 +461,14 @@ function flowApp(DATA) {
     endePause(); stopTimer(); state.done[s.id] = 1;
     if (navigator.vibrate) navigator.vibrate(30);
     const n = naechsterOffen(state.step + 1);
-    if (n < 0) { state.aktiv = null; springTop = true; save(); render(); speak('Tour komplett. Stark!'); }
+    if (n < 0) { state.aktiv = null; save(); render(); speak('Tour komplett. Stark!'); }
     else laufe(n);
   };
   window.skipStep = () => {
     const s = STEPS[state.step];
     endePause(); stopTimer(); state.skipd[s.id] = 1;
     const n = naechsterOffen(state.step + 1);
-    if (n < 0) { state.aktiv = null; springTop = true; save(); render(); }
+    if (n < 0) { state.aktiv = null; save(); render(); }
     else laufe(n);
   };
   // Automatischer Timer-Start beim Oeffnen (nicht waehrend einer Pause). Nach einer
