@@ -706,18 +706,22 @@ function flowApp(DATA) {
 
   // ---- Sprachausgabe / -steuerung ----
   let voiceOn = !!state.voiceOn, micOn = false, recog = null, speaking = false;
+  let recLive = false, sprachEnde = 0;
   const synth = window.speechSynthesis;
   const IOS = /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
   const RATE = IOS ? 1.05 : 1.25;
   function speak(txt) {
     if (!voiceOn || !synth) return;
     try {
-      if (recog) { try { recog.abort(); } catch(e){} }
+      // iOS spielt bei JEDEM Start der Spracherkennung einen Systemton. Deshalb laeuft die
+      // Erkennung dort waehrend der Ansage weiter (Eigenecho wird per speaking/sprachEnde
+      // ignoriert) statt sie zu stoppen und neu zu starten (Nutzerfeedback 2026-09-28).
+      if (recog && !IOS) { try { recog.abort(); } catch(e){} }
       speaking = true;
       synth.cancel();
       const u = new SpeechSynthesisUtterance(txt);
       u.lang = 'de-DE'; u.rate = RATE;
-      u.onend = u.onerror = () => { speaking = false; if (micOn) startRecog(); };
+      u.onend = u.onerror = () => { speaking = false; sprachEnde = Date.now(); if (micOn && !recLive) startRecog(); };
       synth.speak(u);
     } catch(e) { speaking = false; }
   }
@@ -751,16 +755,18 @@ function flowApp(DATA) {
     try {
       recog = new SR();
       recog.lang = 'de-DE'; recog.continuous = true; recog.interimResults = false;
+      recog.onstart = () => { recLive = true; };
       recog.onresult = ev => {
-        if (speaking) return;
+        // Eigene Ansage (und deren Nachlauf) nicht als Kommando werten.
+        if (speaking || Date.now() - sprachEnde < 1000) return;
         const t = ev.results[ev.results.length - 1][0].transcript.toLowerCase().trim();
         document.getElementById('heard').textContent = '\u201e' + t + '\u201c';
         handleVoice(t);
       };
-      recog.onend = () => { if (micOn && !speaking) { try { recog.start(); } catch(e){} } };
+      recog.onend = () => { recLive = false; if (micOn && !speaking) { try { recog.start(); } catch(e){} } };
       recog.onerror = e => {
         if (e.error === 'not-allowed' || e.error === 'service-not-allowed') {
-          micOn = false; updVB();
+          micOn = false; recLive = false; updVB();
           document.getElementById('heard').textContent = 'Mikrofon nicht erlaubt';
         }
       };
@@ -1001,6 +1007,7 @@ window.reportFehlt = async () => {
 };
 
 let voiceOn = !!state.voiceOn, micOn = false, recog = null, speaking = false;
+let recLive = false, sprachEnde = 0;
 const synth = window.speechSynthesis;
 // iOS spricht beim gleichen rate-Wert schneller als Android -> geraeteabhaengiges Tempo (Nutzerfeedback 2026-07-13)
 const IOS = /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
@@ -1008,12 +1015,13 @@ const RATE = IOS ? 1.05 : 1.25;
 function speak(txt) {
   if (!voiceOn || !synth) return;
   try {
-    if (recog) { try { recog.abort(); } catch(e){} }
+    // iOS spielt bei jedem Start der Spracherkennung einen Systemton -> dort nicht stoppen/neu starten.
+    if (recog && !IOS) { try { recog.abort(); } catch(e){} }
     speaking = true;
     synth.cancel();
     const u = new SpeechSynthesisUtterance(txt);
     u.lang = 'de-DE'; u.rate = RATE;
-    u.onend = u.onerror = () => { speaking = false; if (micOn) startRecog(); };
+    u.onend = u.onerror = () => { speaking = false; sprachEnde = Date.now(); if (micOn && !recLive) startRecog(); };
     synth.speak(u);
   } catch(e) { speaking = false; }
 }
@@ -1034,16 +1042,17 @@ function startRecog() {
   try {
     recog = new SR();
     recog.lang = 'de-DE'; recog.continuous = true; recog.interimResults = false;
+    recog.onstart = () => { recLive = true; };
     recog.onresult = ev => {
-      if (speaking) return;
+      if (speaking || Date.now() - sprachEnde < 1000) return;
       const t = ev.results[ev.results.length-1][0].transcript.toLowerCase().trim();
       document.getElementById('heard').textContent = '\u201e' + t + '\u201c';
       handleVoice(t);
     };
-    recog.onend = () => { if (micOn && !speaking) { try { recog.start(); } catch(e){} } };
+    recog.onend = () => { recLive = false; if (micOn && !speaking) { try { recog.start(); } catch(e){} } };
     recog.onerror = e => {
       if (e.error === 'not-allowed' || e.error === 'service-not-allowed') {
-        micOn = false; updVB();
+        micOn = false; recLive = false; updVB();
         document.getElementById('heard').textContent = 'Mikrofon nicht erlaubt';
       }
     };
