@@ -447,27 +447,46 @@ function flowApp(DATA) {
     const akt = tb && tb.querySelector('.tab.act');
     if (tb && akt) tb.scrollLeft = Math.max(0, akt.offsetLeft - (tb.clientWidth - akt.offsetWidth) / 2);
   }
+  // Ist die aktuelle Kiste im Pack-Schritt komplett, automatisch zur naechsten Kiste mit
+  // offenen Positionen wechseln (Nutzerfeedback 2026-09-28: nach dem letzten Punkt eines
+  // Automaten soll direkt das naechste Produkt des naechsten Automaten aufgehen).
+  function packWeiter() {
+    const s = STEPS[state.step];
+    if (!s || s.mode !== 'pack') return '';
+    const m = DATA.machines[state.tab];
+    if (!m || m.items.some(it => !st(k(m, it)))) return '';
+    for (let d = 1; d < DATA.machines.length; d++) {
+      const j = (state.tab + d) % DATA.machines.length;
+      if (DATA.machines[j].items.some(it => !st(k(DATA.machines[j], it)))) {
+        state.tab = j;
+        return 'Kiste ' + (j + 1) + '. ';
+      }
+    }
+    return '';
+  }
   window.mark = (key, val) => {
     const prev = st(key), prevPart = state.part[key];
     ui.pickKey = null;
+    let ansage = '';
     if (val === 0) { delete state.items[key]; delete state.part[key]; }
-    else { state.items[key] = val; if (val !== 3) delete state.part[key]; scrollZiel = 'next'; }
+    else { state.items[key] = val; if (val !== 3) delete state.part[key]; scrollZiel = 'next'; ansage = packWeiter(); }
     state.hist.push({key, prev, prevPart});
     if (state.hist.length > 200) state.hist.shift();
     render();
     if (navigator.vibrate) navigator.vibrate(val === 2 ? [40,60,40] : val === 3 ? [30,40,30] : 30);
-    ansageItem(val === 2 ? 'Als fehlend markiert. ' : val === 3 ? 'Teilmenge gebucht. ' : '');
+    ansageItem((val === 2 ? 'Als fehlend markiert. ' : val === 3 ? 'Teilmenge gebucht. ' : '') + ansage);
   };
   window.markPart = (key, n) => {
     const prev = st(key), prevPart = state.part[key];
     ui.pickKey = null;
     state.items[key] = 3; state.part[key] = n;
     scrollZiel = 'next';
+    const ansage = packWeiter();
     state.hist.push({key, prev, prevPart});
     if (state.hist.length > 200) state.hist.shift();
     render();
     if (navigator.vibrate) navigator.vibrate([30,40,30]);
-    ansageItem('Teilmenge gebucht. ');
+    ansageItem('Teilmenge gebucht. ' + ansage);
   };
   window.startPart = (key, qty) => { ui.pickKey = key; ui.pickVal = qty > 1 ? qty - 1 : 0; render(); };
   window.pickAdj = (delta, qty) => { ui.pickVal = Math.max(0, Math.min(qty, ui.pickVal + delta)); render(); };
@@ -479,6 +498,12 @@ function flowApp(DATA) {
     ui.pickKey = null;
     if (a.prev === 0) delete state.items[a.key]; else state.items[a.key] = a.prev;
     if (a.prevPart == null) delete state.part[a.key]; else state.part[a.key] = a.prevPart;
+    // Zurueck zur Kiste der zurueckgenommenen Position (falls der Autowechsel schon weiter ist).
+    const s = STEPS[state.step];
+    if (s && s.mode === 'pack') {
+      const mi = DATA.machines.findIndex(m => String(a.key).indexOf(m.device + '_') === 0);
+      if (mi >= 0) state.tab = mi;
+    }
     render();
     if (navigator.vibrate) navigator.vibrate(15);
   };
@@ -999,27 +1024,43 @@ function render() {
   else { scrollZiel = null; window.scrollTo(0, y0); }
 }
 window.go = i => { state.tab = i; ui.pickKey = null; springTop = true; render(); announce(); };
+// Kiste komplett -> automatisch zur naechsten Kiste mit offenen Positionen (Nutzerfeedback 2026-09-28).
+function packWeiter() {
+  if (state.tab >= FEHLT) return '';
+  const m = DATA.machines[state.tab];
+  if (!m || m.items.some(it => !st(k(m, it)))) return '';
+  for (let d = 1; d < DATA.machines.length; d++) {
+    const j = (state.tab + d) % DATA.machines.length;
+    if (DATA.machines[j].items.some(it => !st(k(DATA.machines[j], it)))) {
+      state.tab = j;
+      return 'Kiste ' + (j + 1) + '. ';
+    }
+  }
+  return '';
+}
 window.mark = (key, val) => {
   const prev = st(key), prevPart = state.part[key];
   ui.pickKey = null;
+  let ansage = '';
   if (val === 0) { delete state.items[key]; delete state.part[key]; }
-  else { state.items[key] = val; if (val !== 3) delete state.part[key]; scrollZiel = 'next'; }
+  else { state.items[key] = val; if (val !== 3) delete state.part[key]; scrollZiel = 'next'; ansage = packWeiter(); }
   state.hist.push({key, prev, prevPart});
   if (state.hist.length > 200) state.hist.shift();
   render();
   if (navigator.vibrate) navigator.vibrate(val===2 ? [40,60,40] : val===3 ? [30,40,30] : 30);
-  announce(val===2 ? 'Als fehlend markiert. ' : val===3 ? 'Teilmenge gebucht. ' : '');
+  announce((val===2 ? 'Als fehlend markiert. ' : val===3 ? 'Teilmenge gebucht. ' : '') + ansage);
 };
 window.markPart = (key, n) => {
   const prev = st(key), prevPart = state.part[key];
   ui.pickKey = null;
   state.items[key] = 3; state.part[key] = n;
   scrollZiel = 'next';
+  const ansage = packWeiter();
   state.hist.push({key, prev, prevPart});
   if (state.hist.length > 200) state.hist.shift();
   render();
   if (navigator.vibrate) navigator.vibrate([30,40,30]);
-  announce('Teilmenge gebucht. ');
+  announce('Teilmenge gebucht. ' + ansage);
 };
 window.startPart = (key, qty) => { ui.pickKey = key; ui.pickVal = qty > 1 ? qty - 1 : 0; render(); };
 window.pickAdj = (delta, qty) => { ui.pickVal = Math.max(0, Math.min(qty, ui.pickVal + delta)); render(); };
@@ -1031,6 +1072,11 @@ window.undo = () => {
   ui.pickKey = null;
   if (a.prev === 0) delete state.items[a.key]; else state.items[a.key] = a.prev;
   if (a.prevPart == null) delete state.part[a.key]; else state.part[a.key] = a.prevPart;
+  // Zurueck zur Kiste der zurueckgenommenen Position (falls der Autowechsel schon weiter ist).
+  if (state.tab < FEHLT) {
+    const mi = DATA.machines.findIndex(m => String(a.key).indexOf(m.device + '_') === 0);
+    if (mi >= 0) state.tab = mi;
+  }
   render();
   if (navigator.vibrate) navigator.vibrate(15);
   // "Ruecknahme" statt "Zurueckgenommen": das Echo der eigenen Ansage darf nicht
