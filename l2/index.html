@@ -314,6 +314,9 @@ function flowApp(DATA) {
     add(10, {mode: 'fill', soll: sollMin(10, stkVon(m))});
     add(11, {soll: sollMin(11, 1)});
     add(12, {soll: sollMin(12, 1)});
+    // Muell wechseln je Automat (vor der groben Reinigung); die Sollzeit ist JE STANDORT
+    // bemessen -> Anzeige "je Standort", Gesamt-Soll rechnet ueber die Standortzahl.
+    add(13, {ev: 1, evTxt: ' je Standort', skip: 1, soll: sollMin(13, 1)});
     add(14, {soll: sollMin(14, 1)});
   };
   STEPS.push({id: 't1', nr: 1, t: titel(1), sub: 'Alle Kisten dieser Tour', mode: 'pack', soll: sollMin(1, stkGes)});
@@ -323,18 +326,20 @@ function flowApp(DATA) {
   // pruefen, dass alles verschlossen ist und das Licht aus ist.
   STEPS.push({id: 't3a', nr: '3a', t: 'Lager abschlie\u00dfen', sub: 'Alles zu? Licht aus?', soll: 0});
   const seen = {};
+  let standortN = 0;
   (P.standorte || []).forEach((st, si) => {
     const devs = (st.devs || []).filter(d => M_BY_DEV[d] != null);
     if (!devs.length) return;
+    standortN++;
     fahrtN++; STEPS.push({id: 'f' + fahrtN, nr: 4, t: titel(4), sub: '\u2192 ' + st.name, fahrt: 1});
     devs.forEach(dev => { seen[dev] = 1; autoBlock(dev); });
-    STEPS.push({id: 's' + si + '_13', nr: 13, t: titel(13), sub: st.name, soll: sollMin(13, 1)});
     STEPS.push({id: 's' + si + '_15', nr: 15, t: titel(15), sub: st.name, soll: sollMin(15, 1)});
     if (st.kiosk) STEPS.push({id: 's' + si + '_16', nr: 16, t: titel(16), sub: st.name, soll: sollMin(16, 1)});
   });
   // Sicherheitsnetz: Automaten, die in keiner Gruppe auftauchen, bekommen trotzdem ihren Block.
   DATA.machines.forEach(m => {
     if (seen[m.device]) return;
+    standortN++;
     fahrtN++; STEPS.push({id: 'f' + fahrtN, nr: 4, t: titel(4), sub: '\u2192 ' + m.label, fahrt: 1});
     autoBlock(m.device);
   });
@@ -358,9 +363,11 @@ function flowApp(DATA) {
   const istGes = () => STEPS.reduce((a, s) => a + ist(s.id), 0);
   const fahrtIst = () => STEPS.filter(s => s.fahrt).reduce((a, s) => a + ist(s.id), 0);
   // Gesamt-Soll: feste Schritte je Vorkommen; Fahrten als Tour-Budget; Bedarfs-Schritte (ev)
-  // NICHT je Automat, sondern ueber die Mengen-Annahmen der Tour (todos/muenz).
+  // NICHT je Automat, sondern ueber die Mengen-Annahmen der Tour (todos/muenz) bzw. bei
+  // Nr. 13 (Muell, je Automat angeboten, aber je Standort bemessen) ueber die Standortzahl.
   const sollGesMin = STEPS.reduce((a, s) => a + ((s.ev || s.fahrt) ? 0 : (s.soll || 0)), 0)
-    + (P.fahrzeit || 0) + (P.muenz || 0) * sollMin(8, 1) + (P.todos || 0) * sollMin(9, 1);
+    + (P.fahrzeit || 0) + (P.muenz || 0) * sollMin(8, 1) + (P.todos || 0) * sollMin(9, 1)
+    + standortN * sollMin(13, 1);
   function stopTimer() {
     if (state.aktiv && state.seit) state.zeit[state.aktiv] = (state.zeit[state.aktiv] || 0) + (Date.now() - state.seit) / 1000;
     state.aktiv = null; state.seit = null;
@@ -568,7 +575,7 @@ function flowApp(DATA) {
   function timerStreifen(s) {
     const sollTxt = s.fahrt
       ? `Fahrzeit gesamt<br><b>${fmtM(fahrtIst() / 60)}</b> / ${fmtM(P.fahrzeit || 0)} min`
-      : (s.soll ? (s.ev ? `Soll je Ereignis<br><b>${fmtM(s.soll)} min</b>` : `Soll<br><b>${fmtM(s.soll)} min</b>`) : '');
+      : (s.soll ? (s.ev ? `Soll${s.evTxt || ' je Ereignis'}<br><b>${fmtM(s.soll)} min</b>` : `Soll<br><b>${fmtM(s.soll)} min</b>`) : '');
     const pauseH = state.pausiert
       ? `<div class="pausenote" id="pausenote">\u23f8 PAUSE \u2013 Timer angehalten (${fmtM(pauseIst() / 60)} min) \u00b7 \u25b6 zum Weitermachen</div>`
       : '';
@@ -656,18 +663,19 @@ function flowApp(DATA) {
       const steps = STEPS.filter(s => s.nr === nr);
       if (!steps.length) continue;
       const istM = steps.reduce((a, s) => a + ist(s.id), 0) / 60;
-      let soll;
+      let soll, notiz = '';
       if (nr === 4) soll = P.fahrzeit || 0;
-      else if (nr === 8) soll = (P.muenz || 0) * sollMin(8, 1);
-      else if (nr === 9) soll = (P.todos || 0) * sollMin(9, 1);
+      else if (nr === 8) { soll = (P.muenz || 0) * sollMin(8, 1); notiz = 'Soll = Tour-Annahme'; }
+      else if (nr === 9) { soll = (P.todos || 0) * sollMin(9, 1); notiz = 'Soll = Tour-Annahme'; }
+      else if (nr === 13) { soll = standortN * sollMin(13, 1); notiz = 'Soll je Standort \u00d7 ' + standortN; }
       else soll = steps.reduce((a, s) => a + (s.soll || 0), 0);
       zeilen.push({nr, name: titel(nr), anz: steps.length, ist: istM,
-                   soll, mp: soll * (1 + pufVon(nr)), annahme: (nr === 8 || nr === 9)});
+                   soll, mp: soll * (1 + pufVon(nr)), notiz});
     }
     // Feste Kontroll-Schritte ohne Soll (String-Nr., z. B. "3a") an passender Stelle einreihen.
     STEPS.forEach(s => {
       if (typeof s.nr !== 'string') return;
-      const zeile = {nr: s.nr, name: s.t, anz: 1, ist: ist(s.id) / 60, soll: 0, mp: 0, annahme: false, ohneSoll: true};
+      const zeile = {nr: s.nr, name: s.t, anz: 1, ist: ist(s.id) / 60, soll: 0, mp: 0, notiz: '', ohneSoll: true};
       const pos = zeilen.findIndex(z => typeof z.nr === 'number' && z.nr > parseInt(s.nr, 10));
       if (pos < 0) zeilen.push(zeile); else zeilen.splice(pos, 0, zeile);
     });
@@ -683,7 +691,8 @@ function flowApp(DATA) {
     h += `<div class="srow kopf"><span class="snr"></span><span class="snm">T\u00e4tigkeit</span><span class="z3">Ist</span><span class="z3">Soll</span><span class="z3">+Puffer</span></div>`;
     for (const z of zeilen) {
       const kl = z.ohneSoll ? (z.ist > 0 ? 'istok' : '') : (z.ist > z.mp ? 'istover' : z.ist > z.soll ? 'istwarn' : (z.ist > 0 ? 'istok' : ''));
-      h += `<div class="srow"><span class="snr">${z.nr}</span><span class="snm">${esc(z.name)}${z.annahme ? '<small>Soll = Tour-Annahme</small>' : (z.anz > 1 ? '<small>' + z.anz + ' Schritte</small>' : '')}</span>` +
+      const sub = z.notiz || (z.anz > 1 ? z.anz + ' Schritte' : '');
+      h += `<div class="srow"><span class="snr">${z.nr}</span><span class="snm">${esc(z.name)}${sub ? '<small>' + esc(sub) + '</small>' : ''}</span>` +
         `<span class="z3 ${kl}">${fmtM(z.ist)}</span><span class="z3">${z.ohneSoll ? '\u2013' : fmtM(z.soll)}</span><span class="z3">${z.ohneSoll ? '\u2013' : fmtM(z.mp)}</span></div>`;
     }
     h += `<div class="srow summe"><span class="snr">\u03a3</span><span class="snm">GESAMT (min)</span>` +
@@ -802,11 +811,12 @@ function flowApp(DATA) {
       const sec = ist(s.id);
       if (sec < 1 && !state.done[s.id] && !state.skipd[s.id]) continue;
       txt += '- Nr ' + s.nr + ' \u00b7 ' + s.t + (s.sub ? ' \u00b7 ' + s.sub : '') + ' \u00b7 Ist ' + fmtM(sec / 60) + ' min'
-        + (s.soll ? ' \u00b7 Soll ' + fmtM(s.soll) + ' min' + (s.ev ? ' je Ereignis' : '') : '')
+        + (s.soll ? ' \u00b7 Soll ' + fmtM(s.soll) + ' min' + (s.ev ? (s.evTxt || ' je Ereignis') : '') : '')
         + (state.skipd[s.id] ? ' \u00b7 \u00fcbersprungen' : (state.done[s.id] ? '' : ' \u00b7 offen')) + '\n';
     }
     txt += '\nBedarfs-Annahmen je Tour (im Gesamt-Soll): Nr 8 \u00d7 ' + (P.muenz || 0) + ' = ' + fmtM((P.muenz || 0) * sollMin(8, 1))
-      + ' min \u00b7 Nr 9 \u00d7 ' + (P.todos || 0) + ' = ' + fmtM((P.todos || 0) * sollMin(9, 1)) + ' min\n';
+      + ' min \u00b7 Nr 9 \u00d7 ' + (P.todos || 0) + ' = ' + fmtM((P.todos || 0) * sollMin(9, 1))
+      + ' min \u00b7 Nr 13 \u00d7 ' + standortN + ' Standorte = ' + fmtM(standortN * sollMin(13, 1)) + ' min\n';
     txt += 'Fahrzeit gesamt: Ist ' + fmtM(fahrtIst() / 60) + ' min \u00b7 Soll ' + fmtM(P.fahrzeit || 0) + ' min\n';
     txt += 'Pausen gesamt: ' + fmtM(pauseIst() / 60) + ' min (nicht in den Schritt-Zeiten enthalten)\n';
     txt += 'GESAMT: Ist ' + fmtM(istGes() / 60) + ' min \u00b7 Soll ' + fmtM(sollGesMin) + ' min\n';
