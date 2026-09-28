@@ -328,7 +328,7 @@ function flowApp(DATA) {
     if (!devs.length) return;
     fahrtN++; STEPS.push({id: 'f' + fahrtN, nr: 4, t: titel(4), sub: '\u2192 ' + st.name, fahrt: 1});
     devs.forEach(dev => { seen[dev] = 1; autoBlock(dev); });
-    // st.ohne: Taetigkeits-Nummern, die an diesem Standort entfallen (aus den Tour-Daten).
+    // st.ohne: Nummern der Punkte, die an diesem Standort entfallen (aus den Tour-Daten).
     const ohne = st.ohne || [];
     if (ohne.indexOf(13) < 0) STEPS.push({id: 's' + si + '_13', nr: 13, t: titel(13), sub: st.name, soll: sollMin(13, 1)});
     if (ohne.indexOf(15) < 0) STEPS.push({id: 's' + si + '_15', nr: 15, t: titel(15), sub: st.name, soll: sollMin(15, 1)});
