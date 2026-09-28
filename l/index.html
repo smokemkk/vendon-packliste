@@ -422,9 +422,9 @@ function flowApp(DATA) {
   const missQty = (m, it) => { const s = st(k(m, it)); return s === 2 ? it.qty : s === 3 ? Math.max(0, it.qty - partOf(k(m, it))) : 0; };
   const missList = () => DATA.machines.flatMap((m, i) => m.items.filter(it => missQty(m, it) > 0).map(it => ({m, i, it, miss: missQty(m, it)})));
   let ui = {pickKey: null, pickVal: 0};
-  // Scroll-Verhalten (Nutzerfeedback 2026-09-28): Nach dem Abhaken springt die Ansicht zum
-  // NAECHSTEN OFFENEN Punkt (#nextitem); bei sonstigen Korrekturen bleibt sie stehen; nur
-  // Schritt-, Kisten- oder Ansichtswechsel springen an den Seitenanfang.
+  // Scroll-Verhalten: Nach dem Abhaken springt die Ansicht zum NAECHSTEN OFFENEN Punkt
+  // (#nextitem); bei sonstigen Korrekturen bleibt sie stehen; nur Schritt-, Kisten-
+  // oder Ansichtswechsel springen an den Seitenanfang.
   let springTop = true, scrollZiel = null;
   function scrollNach(y0) {
     if (springTop) { window.scrollTo(0, 0); springTop = false; scrollZiel = null; return; }
@@ -448,8 +448,8 @@ function flowApp(DATA) {
     if (tb && akt) tb.scrollLeft = Math.max(0, akt.offsetLeft - (tb.clientWidth - akt.offsetWidth) / 2);
   }
   // Ist die aktuelle Kiste im Pack-Schritt komplett, automatisch zur naechsten Kiste mit
-  // offenen Positionen wechseln (Nutzerfeedback 2026-09-28: nach dem letzten Punkt eines
-  // Automaten soll direkt das naechste Produkt des naechsten Automaten aufgehen).
+  // offenen Positionen wechseln (nach dem letzten Punkt geht direkt das naechste
+  // Produkt der naechsten Kiste auf).
   function packWeiter() {
     const s = STEPS[state.step];
     if (!s || s.mode !== 'pack') return '';
@@ -763,7 +763,7 @@ function flowApp(DATA) {
     try {
       // iOS spielt bei JEDEM Start der Spracherkennung einen Systemton. Deshalb laeuft die
       // Erkennung dort waehrend der Ansage weiter (Eigenecho wird per speaking/sprachEnde
-      // ignoriert) statt sie zu stoppen und neu zu starten (Nutzerfeedback 2026-09-28).
+      // ignoriert) statt sie zu stoppen und neu zu starten.
       if (recog && !IOS) { try { recog.abort(); } catch(e){} }
       speaking = true;
       synth.cancel();
@@ -895,8 +895,8 @@ const missQty = (m,it) => { const s = st(k(m,it)); return s===2 ? it.qty : s===3
 const rest = m => m.items.filter(it => !st(k(m,it))).length;
 const missList = () => DATA.machines.flatMap((m,i) => m.items.filter(it => missQty(m,it) > 0).map(it => ({m, i, it, miss: missQty(m,it)})));
 let ui = {pickKey:null, pickVal:0};
-// Scroll-Verhalten (Nutzerfeedback 2026-09-28): nach dem Abhaken zum naechsten offenen
-// Punkt (#nextitem), sonst Position halten; nur Kisten-/Tab-Wechsel springt nach oben.
+// Scroll-Verhalten: nach dem Abhaken zum naechsten offenen Punkt (#nextitem),
+// sonst Position halten; nur Kisten-/Tab-Wechsel springt nach oben.
 let springTop = true, scrollZiel = null;
 
 function row(m, it, cls, boxTxt, withX, qtyHtml, sub) {
@@ -1024,7 +1024,7 @@ function render() {
   else { scrollZiel = null; window.scrollTo(0, y0); }
 }
 window.go = i => { state.tab = i; ui.pickKey = null; springTop = true; render(); announce(); };
-// Kiste komplett -> automatisch zur naechsten Kiste mit offenen Positionen (Nutzerfeedback 2026-09-28).
+// Kiste komplett -> automatisch zur naechsten Kiste mit offenen Positionen.
 function packWeiter() {
   if (state.tab >= FEHLT) return '';
   const m = DATA.machines[state.tab];
@@ -1080,7 +1080,7 @@ window.undo = () => {
   render();
   if (navigator.vibrate) navigator.vibrate(15);
   // "Ruecknahme" statt "Zurueckgenommen": das Echo der eigenen Ansage darf nicht
-  // das Sprachkommando /zurueck/ ausloesen (Codex-Einwand Runde 7).
+  // das Sprachkommando /zurueck/ ausloesen.
   announce('R\u00fccknahme. ');
 };
 window.reportFehlt = async () => {
@@ -1103,7 +1103,7 @@ window.reportFehlt = async () => {
 let voiceOn = !!state.voiceOn, micOn = false, recog = null, speaking = false;
 let recLive = false, sprachEnde = 0, uGen = 0;
 const synth = window.speechSynthesis;
-// iOS spricht beim gleichen rate-Wert schneller als Android -> geraeteabhaengiges Tempo (Nutzerfeedback 2026-07-13)
+// iOS spricht beim gleichen rate-Wert schneller als Android -> geraeteabhaengiges Tempo
 const IOS = /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
 const RATE = IOS ? 1.05 : 1.25;
 function speak(txt) {
