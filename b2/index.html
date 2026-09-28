@@ -359,6 +359,8 @@ function flowApp(DATA) {
   }
   const pauseIst = () => (state.pauseSum || 0) + (state.pausiert && state.pauseSeit ? (Date.now() - state.pauseSeit) / 1000 : 0);
   window.togglePause = () => {
+    // Eine fertige Tour laesst sich nicht (unsichtbar) pausieren - nur noch fortsetzen.
+    if (!state.pausiert && naechsterOffen(0) < 0) return;
     if (state.pausiert) {
       endePause();
       const s = STEPS[state.step];
@@ -503,7 +505,7 @@ function flowApp(DATA) {
       ? `Fahrzeit gesamt<br><b>${fmtM(fahrtIst() / 60)}</b> / ${fmtM(P.fahrzeit || 0)} min`
       : (s.soll ? (s.ev ? `Soll je Ereignis<br><b>${fmtM(s.soll)} min</b>` : `Soll<br><b>${fmtM(s.soll)} min</b>`) : '');
     const pauseH = state.pausiert
-      ? `<div class="pausenote">\u23f8 PAUSE \u2013 Timer angehalten (${fmtM(pauseIst() / 60)} min) \u00b7 \u25b6 zum Weitermachen</div>`
+      ? `<div class="pausenote" id="pausenote">\u23f8 PAUSE \u2013 Timer angehalten (${fmtM(pauseIst() / 60)} min) \u00b7 \u25b6 zum Weitermachen</div>`
       : '';
     return `<div class="tmrrow"><span class="${tmrKlasse(s)}" id="tmr">${fmtClock(ist(s.id))}</span><span class="soll">${sollTxt}</span></div>${pauseH}`;
   }
@@ -648,7 +650,9 @@ function flowApp(DATA) {
     const el = document.getElementById('tmr');
     if (el && state.aktiv === s.id) { el.textContent = fmtClock(ist(s.id)); el.className = tmrKlasse(s); }
     const zg = document.getElementById('zeitges');
-    if (zg) zg.innerHTML = `\u23f1 <b>${fmtM(istGes() / 60)}</b> / ${fmtM(sollGesMin)} min`;
+    if (zg) zg.innerHTML = `${state.pausiert ? '\u23f8 ' : '\u23f1 '}<b>${fmtM(istGes() / 60)}</b> / ${fmtM(sollGesMin)} min`;
+    const pn = document.getElementById('pausenote');
+    if (pn && state.pausiert) pn.textContent = '\u23f8 PAUSE \u2013 Timer angehalten (' + fmtM(pauseIst() / 60) + ' min) \u00b7 \u25b6 zum Weitermachen';
     if ((++tickN % 10) === 0) save();
   }, 1000);
 
