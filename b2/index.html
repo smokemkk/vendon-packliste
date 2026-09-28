@@ -111,7 +111,7 @@ h3.warn { color:var(--warn); }
 .pinbox button { width:100%; margin-top:12px; padding:14px; font-size:17px; font-weight:800; border:0; border-radius:11px; background:var(--acc); color:#04283d; }
 #pinmsg { min-height:18px; margin-top:9px; font-size:13px; color:var(--warn); }
 .nodata { margin:40px 16px; text-align:center; color:var(--dim); font-size:16px; line-height:1.5; }
-/* --- Lagerlisten-Flow (Taetigkeiten + Timer, 2026-09-28) --- */
+/* --- Ablauf-Modus --- */
 .stepcard { margin:10px; padding:14px; background:var(--card); border:2px solid var(--acc); border-radius:16px; }
 .stepcard .shead { display:flex; align-items:center; gap:9px; flex-wrap:wrap; }
 .stepcard .stitle { font-size:19px; font-weight:800; line-height:1.25; }
@@ -646,10 +646,12 @@ function flowApp(DATA) {
       const sec = ist(s.id);
       if (sec < 1 && !state.done[s.id] && !state.skipd[s.id]) continue;
       txt += '- Nr ' + s.nr + ' \u00b7 ' + s.t + (s.sub ? ' \u00b7 ' + s.sub : '') + ' \u00b7 Ist ' + fmtM(sec / 60) + ' min'
-        + (s.soll ? ' \u00b7 Soll ' + fmtM(s.soll) + ' min' : '')
+        + (s.soll ? ' \u00b7 Soll ' + fmtM(s.soll) + ' min' + (s.ev ? ' je Ereignis' : '') : '')
         + (state.skipd[s.id] ? ' \u00b7 \u00fcbersprungen' : (state.done[s.id] ? '' : ' \u00b7 offen')) + '\n';
     }
-    txt += '\nFahrzeit gesamt: Ist ' + fmtM(fahrtIst() / 60) + ' min \u00b7 Soll ' + fmtM(P.fahrzeit || 0) + ' min\n';
+    txt += '\nBedarfs-Annahmen je Tour (im Gesamt-Soll): Nr 8 \u00d7 ' + (P.muenz || 0) + ' = ' + fmtM((P.muenz || 0) * sollMin(8, 1))
+      + ' min \u00b7 Nr 9 \u00d7 ' + (P.todos || 0) + ' = ' + fmtM((P.todos || 0) * sollMin(9, 1)) + ' min\n';
+    txt += 'Fahrzeit gesamt: Ist ' + fmtM(fahrtIst() / 60) + ' min \u00b7 Soll ' + fmtM(P.fahrzeit || 0) + ' min\n';
     txt += 'GESAMT: Ist ' + fmtM(istGes() / 60) + ' min \u00b7 Soll ' + fmtM(sollGesMin) + ' min\n';
     await teile('Zeit-Protokoll Lagerliste ' + DATA.tour, txt);
   };
@@ -764,7 +766,7 @@ function flowApp(DATA) {
   render();
 }
 
-// ==================== Klassische Packliste (Fallback ohne Taetigkeiten-Plan) ====================
+// ==================== Klassische Packliste (Fallback ohne Ablauf-Daten) ====================
 function legacyApp(DATA) {
 kennzeichneAlter(DATA, 'Packliste');
 const KEY = 'packliste_' + DATA.datum + '_' + DATA.tour;
