@@ -328,9 +328,11 @@ function flowApp(DATA) {
     if (!devs.length) return;
     fahrtN++; STEPS.push({id: 'f' + fahrtN, nr: 4, t: titel(4), sub: '\u2192 ' + st.name, fahrt: 1});
     devs.forEach(dev => { seen[dev] = 1; autoBlock(dev); });
-    STEPS.push({id: 's' + si + '_13', nr: 13, t: titel(13), sub: st.name, soll: sollMin(13, 1)});
-    STEPS.push({id: 's' + si + '_15', nr: 15, t: titel(15), sub: st.name, soll: sollMin(15, 1)});
-    if (st.kiosk) STEPS.push({id: 's' + si + '_16', nr: 16, t: titel(16), sub: st.name, soll: sollMin(16, 1)});
+    // st.ohne: Taetigkeits-Nummern, die an diesem Standort entfallen (aus den Tour-Daten).
+    const ohne = st.ohne || [];
+    if (ohne.indexOf(13) < 0) STEPS.push({id: 's' + si + '_13', nr: 13, t: titel(13), sub: st.name, soll: sollMin(13, 1)});
+    if (ohne.indexOf(15) < 0) STEPS.push({id: 's' + si + '_15', nr: 15, t: titel(15), sub: st.name, soll: sollMin(15, 1)});
+    if (st.kiosk && ohne.indexOf(16) < 0) STEPS.push({id: 's' + si + '_16', nr: 16, t: titel(16), sub: st.name, soll: sollMin(16, 1)});
     // Vor der Weiterfahrt: Kisten zurueck ins Auto. Kontroll-Schritt ohne eigenes Soll
     // (die zugehoerige Sollzeit ist je Tour bemessen und steckt in Nr. 3).
     STEPS.push({id: 's' + si + '_3b', nr: '3b', t: titel(3), sub: st.name, ort: 1, soll: 0});
