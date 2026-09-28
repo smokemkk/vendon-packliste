@@ -920,7 +920,7 @@ function render() {
   document.getElementById('navzone').innerHTML = '<div class="tabs" id="tabs"></div>';
   document.getElementById('tabs').innerHTML = DATA.machines.map((mm,i) => {
     const r = rest(mm);
-    // Offene Stueck je Kiste (Nutzerwunsch 2026-09-25, passend zur Stueckzahl im Kopf).
+    // Offene Stueck je Kiste (passend zur Stueckzahl im Kopf).
     const rStk = mm.items.reduce((a,it)=>a+(st(k(mm,it))?0:it.qty),0);
     const cls = 'tab' + (i===state.tab?' act':'') + (r===0?' done':'');
     return `<div class="${cls}" onclick="go(${i})">${i+1}\u00b7${esc(mm.label)}${r===0?' \u2713':' ('+rStk+' Stk.)'}</div>`;
@@ -928,7 +928,7 @@ function render() {
 
   const allT = DATA.machines.reduce((n,m)=>n+m.items.length,0);
   const offen = DATA.machines.reduce((n,m)=>n+m.items.filter(it=>!st(k(m,it))).length,0);
-  // Stueckzahl oben rechts (Nutzerwunsch 2026-09-24): gepackte Stueck / Bedarf gesamt.
+  // Stueckzahl oben rechts: gepackte Stueck / Bedarf gesamt.
   // Status 1 = ganze Menge, Status 3 = Teilmenge, Status 2 = nichts gepackt.
   const stkGes = DATA.machines.reduce((n,m)=>n+m.items.reduce((a,it)=>a+it.qty,0),0);
   const stkGep = DATA.machines.reduce((n,m)=>n+m.items.reduce((a,it)=>{const s=st(k(m,it));return a+(s===1?it.qty:s===3?Math.min(partOf(k(m,it)),it.qty):0);},0),0);
