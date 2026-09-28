@@ -380,6 +380,7 @@ function flowApp(DATA) {
     delete state.done[s.id]; delete state.skipd[s.id];
     state.aktiv = s.id; state.seit = Date.now();
     state.view = 0;
+    springTop = true;
     save(); render(); ansageSchritt();
   }
   const naechsterOffen = from => {
@@ -396,14 +397,14 @@ function flowApp(DATA) {
     endePause(); stopTimer(); state.done[s.id] = 1;
     if (navigator.vibrate) navigator.vibrate(30);
     const n = naechsterOffen(state.step + 1);
-    if (n < 0) { state.aktiv = null; save(); render(); speak('Tour fertig. Stark!'); }
+    if (n < 0) { state.aktiv = null; springTop = true; save(); render(); speak('Tour fertig. Stark!'); }
     else laufe(n);
   };
   window.skipStep = () => {
     const s = STEPS[state.step];
     endePause(); stopTimer(); state.skipd[s.id] = 1;
     const n = naechsterOffen(state.step + 1);
-    if (n < 0) { state.aktiv = null; save(); render(); }
+    if (n < 0) { state.aktiv = null; springTop = true; save(); render(); }
     else laufe(n);
   };
   // Automatischer Timer-Start beim Oeffnen (nicht waehrend einer Pause).
@@ -421,6 +422,13 @@ function flowApp(DATA) {
   const missQty = (m, it) => { const s = st(k(m, it)); return s === 2 ? it.qty : s === 3 ? Math.max(0, it.qty - partOf(k(m, it))) : 0; };
   const missList = () => DATA.machines.flatMap((m, i) => m.items.filter(it => missQty(m, it) > 0).map(it => ({m, i, it, miss: missQty(m, it)})));
   let ui = {pickKey: null, pickVal: 0};
+  // Scroll-Verhalten (Nutzerfeedback 2026-09-28): Beim Abhaken/Korrigieren bleibt die Ansicht
+  // stehen; nur bei Schritt-, Kisten- oder Ansichtswechsel springt sie nach oben.
+  let springTop = true;
+  function scrollNach(y0) {
+    if (springTop) { window.scrollTo(0, 0); springTop = false; }
+    else window.scrollTo(0, y0);
+  }
   window.mark = (key, val) => {
     const prev = st(key), prevPart = state.part[key];
     ui.pickKey = null;
@@ -455,8 +463,8 @@ function flowApp(DATA) {
     render();
     if (navigator.vibrate) navigator.vibrate(15);
   };
-  window.go = i => { state.tab = i; ui.pickKey = null; render(); ansageItem(); };
-  window.zeigeView = v => { state.view = v; save(); render(); };
+  window.go = i => { state.tab = i; ui.pickKey = null; springTop = true; render(); ansageItem(); };
+  window.zeigeView = v => { state.view = v; springTop = true; save(); render(); };
 
   // ---- Formatierung ----
   const fmtM = x => (Math.round(x * 10) / 10).toLocaleString('de-DE', {minimumFractionDigits: 1, maximumFractionDigits: 1});
@@ -581,6 +589,7 @@ function flowApp(DATA) {
   }
 
   function render() {
+    const y0 = window.scrollY || 0;
     const mc = missList().length;
     document.getElementById('navzone').innerHTML =
       `<div class="navtabs"><div class="navtab${state.view === 0 ? ' act' : ''}" onclick="zeigeView(0)">Ablauf</div>` +
@@ -610,7 +619,7 @@ function flowApp(DATA) {
       }
       document.getElementById('main').innerHTML = h;
       document.getElementById('botbar').innerHTML = `<button class="stepback" onclick="zeigeView(0)">\u2039 Ablauf</button><div class="nx"><div class="lbl">FEHLT-\u00dcBERSICHT</div></div>`;
-      save(); window.scrollTo(0, 0);
+      save(); scrollNach(y0);
       return;
     }
     const alleFertig = naechsterOffen(0) < 0;
@@ -621,7 +630,8 @@ function flowApp(DATA) {
       h = ablaufListe(h);
       document.getElementById('main').innerHTML = h;
       document.getElementById('botbar').innerHTML = `<button class="stepback" onclick="stepZurueck()">\u2039 Schritt</button><div class="nx"><div class="lbl">TOUR FERTIG \ud83c\udf89</div></div>`;
-      save(); return;
+      save(); scrollNach(y0);
+      return;
     }
     const s = STEPS[state.step];
     h += `<div class="stepcard"><div class="shead"><span class="kbadge">Nr ${s.nr}</span><span class="stitle">${esc(s.t)}</span><span class="ssub">${esc(s.sub || '')}</span></div>${timerStreifen(s)}</div>`;
@@ -639,7 +649,7 @@ function flowApp(DATA) {
     const pBtn = `<button class="stepback pause${state.pausiert ? ' on' : ''}" onclick="togglePause()">${state.pausiert ? '\u25b6' : '\u23f8'}</button>`;
     document.getElementById('botbar').innerHTML = `<button class="stepback" onclick="stepZurueck()" ${state.step ? '' : 'disabled'}>\u2039</button>${pBtn}${uBtn}${sBtn}${fBtn}`;
     save();
-    window.scrollTo(0, 0);
+    scrollNach(y0);
   }
 
   // Sekunden-Tick: nur Timer-Anzeigen aktualisieren (kein Voll-Render), alle 10 s speichern.
@@ -820,6 +830,9 @@ const missQty = (m,it) => { const s = st(k(m,it)); return s===2 ? it.qty : s===3
 const rest = m => m.items.filter(it => !st(k(m,it))).length;
 const missList = () => DATA.machines.flatMap((m,i) => m.items.filter(it => missQty(m,it) > 0).map(it => ({m, i, it, miss: missQty(m,it)})));
 let ui = {pickKey:null, pickVal:0};
+// Scroll-Verhalten (Nutzerfeedback 2026-09-28): beim Abhaken bleibt die Ansicht stehen,
+// nur ein Kisten-/Tab-Wechsel springt nach oben.
+let springTop = true;
 
 function row(m, it, cls, boxTxt, withX, qtyHtml, sub) {
   const key = k(m,it);
@@ -830,6 +843,7 @@ function row(m, it, cls, boxTxt, withX, qtyHtml, sub) {
 }
 
 function render() {
+  const y0 = window.scrollY || 0;
   if (!DATA.machines.length) {
     document.getElementById('main').innerHTML = '<div class="nodata">F\u00fcr die ' + esc(DATA.tour) + ' ist noch keine Liste ver\u00f6ffentlicht.<br>Sie erscheint hier automatisch nach der n\u00e4chsten Bef\u00fcllung.</div>';
     document.getElementById('prog').textContent = ''; document.getElementById('navzone').innerHTML = '';
@@ -930,9 +944,10 @@ function render() {
   }
   document.getElementById('nx').innerHTML = nh;
   save();
-  window.scrollTo(0,0);
+  if (springTop) { window.scrollTo(0,0); springTop = false; }
+  else window.scrollTo(0, y0);
 }
-window.go = i => { state.tab = i; ui.pickKey = null; render(); announce(); };
+window.go = i => { state.tab = i; ui.pickKey = null; springTop = true; render(); announce(); };
 window.mark = (key, val) => {
   const prev = st(key), prevPart = state.part[key];
   ui.pickKey = null;
