@@ -675,7 +675,7 @@ function flowApp(DATA) {
     h += `<div class="srow"><span class="snr">\u23f8</span><span class="snm">Pausen<small>laufen separat, z\u00e4hlen nicht ins Ist</small></span>` +
       `<span class="z3">${fmtM(pauseIst() / 60)}</span><span class="z3">\u2013</span><span class="z3">\u2013</span></div>`;
     h += '</div>';
-    h += '<div class="hint">Ist gr\u00fcn = im Soll \u00b7 gelb = \u00fcber Soll \u00b7 rot = \u00fcber Soll + Puffer. Soll = Katalog-Sollzeit \u00d7 heutige Mengen; Nr. 4 = Fahrzeit-Budget der Tour; Nr. 8/9 nach Tour-Annahme.</div>';
+    h += '<div class="hint">Ist gr\u00fcn = im Soll \u00b7 gelb = \u00fcber Soll \u00b7 rot = \u00fcber Soll + Puffer. Soll = Sollzeit je T\u00e4tigkeit \u00d7 heutige Mengen; Nr. 4 = Fahrzeit-Budget der Tour; Nr. 8/9 nach Tour-Annahme.</div>';
     h += '<button class="report z" onclick="reportZeit()">\u23f1 Zeit-Protokoll teilen</button>';
     return h;
   }
