@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
-<title>OMS Packliste</title>
+<title>OMS Lagerliste</title>
 <style>
 :root { --bg:#101418; --card:#1b222b; --fg:#f2f5f8; --dim:#8fa0b0; --acc:#33b5ff; --ok:#2ecc71; --warn:#f5a623; --line:#2a3542; --old:#ff3b30; --oldbg:#4d1210; }
 * { box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
@@ -50,6 +50,7 @@ body.veraltet .tour { color:#fff; }
 .btnrow { display:flex; gap:10px; margin-top:12px; }
 .btnrow2 { display:flex; gap:10px; margin-top:9px; }
 .nowbtn { flex:1; padding:15px 8px; font-size:19px; font-weight:800; border:0; border-radius:12px; background:var(--ok); color:#03210f; }
+.nowbtn:disabled { opacity:.4; }
 .partbtn { flex:1; padding:13px 8px; font-size:15px; font-weight:800; border-radius:12px; background:#12304a; color:var(--acc); border:1.5px solid var(--acc); }
 .missbtn { flex:1; padding:13px 8px; font-size:15px; font-weight:800; border-radius:12px; background:#3a2f14; color:var(--warn); border:1.5px solid var(--warn); }
 .partpick { margin-top:12px; padding:12px; background:#0f1620; border:1.5px solid var(--acc); border-radius:12px; }
@@ -68,6 +69,7 @@ li .psub { display:block; font-size:11px; color:var(--warn); margin-top:2px; }
 .alldone { margin:10px; padding:20px; text-align:center; background:var(--card); border:2px solid var(--ok); border-radius:16px; font-size:20px; font-weight:800; color:var(--ok); }
 .alldone.w { border-color:var(--warn); color:var(--warn); font-size:17px; }
 .report { display:block; width:calc(100% - 24px); margin:14px 12px; padding:15px; font-size:17px; font-weight:800; border:0; border-radius:12px; background:var(--warn); color:#3a2a00; }
+.report.z { background:#12304a; color:var(--acc); border:1.5px solid var(--acc); }
 ul { list-style:none; margin:4px 10px; padding:0; }
 li { display:flex; align-items:center; gap:11px; padding:13px 11px; border-bottom:1px solid var(--line); font-size:16px; }
 li .sel { font-size:23px; font-weight:800; min-width:58px; font-variant-numeric:tabular-nums; }
@@ -109,22 +111,55 @@ h3.warn { color:var(--warn); }
 .pinbox button { width:100%; margin-top:12px; padding:14px; font-size:17px; font-weight:800; border:0; border-radius:11px; background:var(--acc); color:#04283d; }
 #pinmsg { min-height:18px; margin-top:9px; font-size:13px; color:var(--warn); }
 .nodata { margin:40px 16px; text-align:center; color:var(--dim); font-size:16px; line-height:1.5; }
+/* --- Lagerlisten-Flow (Taetigkeiten + Timer, 2026-09-28) --- */
+.stepcard { margin:10px; padding:14px; background:var(--card); border:2px solid var(--acc); border-radius:16px; }
+.stepcard .shead { display:flex; align-items:center; gap:9px; flex-wrap:wrap; }
+.stepcard .stitle { font-size:19px; font-weight:800; line-height:1.25; }
+.stepcard .ssub { width:100%; font-size:14px; color:var(--dim); margin-top:3px; line-height:1.3; }
+.tmrrow { display:flex; align-items:baseline; gap:14px; margin-top:10px; }
+.tmr { font-size:50px; font-weight:800; line-height:1; font-variant-numeric:tabular-nums; color:var(--ok); }
+.tmr.w { color:var(--warn); } .tmr.o { color:var(--old); }
+.soll { margin-left:auto; text-align:right; font-size:13px; color:var(--dim); line-height:1.4; }
+.soll b { color:var(--fg); font-size:16px; }
+.stepbtns { display:flex; gap:10px; margin-top:12px; }
+.skipbtn { flex:1; padding:13px 8px; font-size:15px; font-weight:800; border-radius:12px; background:var(--card); color:var(--dim); border:1.5px solid var(--line); }
+.steps { margin:6px 10px; }
+.srow { display:flex; align-items:center; gap:9px; padding:9px 8px; border-bottom:1px solid var(--line); font-size:14px; color:var(--dim); }
+.srow .snr { flex:0 0 auto; min-width:26px; text-align:center; font-weight:800; font-size:12px; color:var(--dim); border:1px solid var(--line); border-radius:7px; padding:3px 4px; }
+.srow .snm { flex:1; line-height:1.25; min-width:0; overflow:hidden; text-overflow:ellipsis; }
+.srow .snm small { display:block; font-size:11px; color:var(--dim); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.srow .szeit { flex:0 0 auto; font-variant-numeric:tabular-nums; font-size:13px; }
+.srow.cur { color:var(--fg); background:#12202e; border-left:3px solid var(--acc); border-radius:6px; }
+.srow.cur .snr { color:var(--acc); border-color:var(--acc); }
+.srow.ok { opacity:.55; } .srow.ok .snr { color:var(--ok); border-color:var(--ok); }
+.srow.sk { opacity:.4; } .srow.sk .snm { text-decoration:line-through; }
+.sgroup { margin:14px 12px 2px; font-size:13px; font-weight:800; color:var(--acc); letter-spacing:.4px; }
+.navtabs { display:flex; gap:6px; padding:8px 0 4px; }
+.navtab { flex:1; text-align:center; padding:9px 8px; border-radius:12px; background:var(--card); color:var(--dim); font-size:14px; font-weight:700; border:1px solid var(--line); }
+.navtab.act { background:var(--acc); color:#04283d; border-color:var(--acc); }
+.navtab.warn { color:var(--warn); border-color:var(--warn); }
+.navtab.warn.act { background:var(--warn); color:#3a2a00; }
+.stepback { flex:0 0 auto; align-self:center; padding:13px 12px; font-size:15px; font-weight:800; border-radius:12px; border:1.5px solid var(--dim); background:var(--card); color:var(--fg); }
+.stepback:disabled { opacity:.35; }
+.fertigbtn { flex:1; padding:15px 8px; font-size:19px; font-weight:800; border:0; border-radius:12px; background:var(--ok); color:#03210f; }
+.fertigbtn:disabled { opacity:.45; }
+.fillhint { margin:10px 2px 2px; font-size:13px; color:var(--dim); line-height:1.45; }
 </style>
 </head>
 <body>
-<div id="pinov"><div class="pinbox"><h2>&#128230; OMS Packliste</h2><p>Bitte PIN eingeben (einmalig)</p>
+<div id="pinov"><div class="pinbox"><h2>&#128230; OMS Lagerliste</h2><p>Bitte PIN eingeben (einmalig)</p>
 <input id="pin" inputmode="numeric" autocomplete="off" placeholder="&bull;&bull;&bull;&bull;&bull;&bull;">
 <button onclick="pinGo()">&Ouml;ffnen</button><div id="pinmsg"></div></div></div>
 <header>
-  <div class="tourrow"><span><span class="tour" id="ttl">&#128230; Packliste</span><span class="agebadge" id="agebadge"></span></span>
+  <div class="tourrow"><span><span class="tour" id="ttl">&#128230; Lagerliste</span><span class="agebadge" id="agebadge"></span></span>
     <span class="vbtns"><span class="heard" id="heard"></span><button class="vbtn" id="vb" onclick="toggleVoice()">&#128266;</button><button class="vbtn mic" id="mb" onclick="toggleMic()">&#127908;</button></span></div>
   <div id="agebar" role="alert"></div>
-  <div class="tourrow"><span></span><span class="prog" id="prog"></span></div>
-  <div class="tabs" id="tabs"></div>
+  <div class="tourrow"><span class="prog" id="zeitges"></span><span class="prog" id="prog"></span></div>
+  <div id="navzone"></div>
   <div class="bar"><div id="bar"></div></div>
 </header>
 <div id="main"></div>
-<div class="next"><button class="undo" id="undo" onclick="undo()">&#8617; Zur&uuml;ck</button><div class="nx" id="nx"></div></div>
+<div class="next" id="botbar"><button class="undo" id="undo" onclick="undo()">&#8617; Zur&uuml;ck</button><div class="nx" id="nx"></div></div>
 <script>
 const LS=(()=>{try{localStorage.setItem('__t','1');localStorage.removeItem('__t');return localStorage;}catch(e){const m={};return{getItem:k=>(k in m?m[k]:null),setItem:(k,v)=>{m[k]=String(v);},clear:()=>{for(const k in m)delete m[k];}};}})();
 const b64 = s => Uint8Array.from(atob(s), c => c.charCodeAt(0));
@@ -153,31 +188,27 @@ document.addEventListener('keydown', e => { if (e.key === 'Enter' && document.ge
   if (saved) { try { const d = await tryPin(saved); document.getElementById('pinov').remove(); startApp(d); return; } catch(e){} }
   document.getElementById('pinov').style.display = 'flex';
 })();
-function startApp(DATA) {
-document.getElementById('ttl').innerHTML = '&#128230; Packliste ' + DATA.tour + ' &middot; ' + (DATA.datum || '&#8211;');
-document.title = 'Packliste ' + DATA.tour + ' ' + (DATA.datum || '');
-// Alters-Kennzeichnung. Grundlage sind reine Kalendertage nach Geraetedatum (DST-unempfindlich);
-// eine exakte 24-Stunden-Rechnung ist mit dem Feld YYYY-MM-DD nicht moeglich.
-// Rueckgabe: Zahl = Alter in Tagen (negativ = Datum liegt in der Zukunft),
-//            '' = kein Datum (Platzhalter),  null = Datum unbrauchbar.
-const alterTage = (() => {
-  const s = String(DATA.datum || '');
-  if (s.length === 0) return '';
-  if (s.length !== 10 || s.charAt(4) !== '-' || s.charAt(7) !== '-') return null;
-  const nurZiffern = x => { for (let i = 0; i < x.length; i++) { const c = x.charCodeAt(i); if (c < 48 || c > 57) return false; } return x.length > 0; };
-  const jS = s.slice(0, 4), mS = s.slice(5, 7), tS = s.slice(8, 10);
-  if (!nurZiffern(jS) || !nurZiffern(mS) || !nurZiffern(tS)) return null;
-  const j = Number(jS), m = Number(mS), t = Number(tS);
-  if (j < 2000 || j > 2999 || m < 1 || m > 12 || t < 1 || t > 31) return null;
-  const ms = Date.UTC(j, m - 1, t);
-  const roundtrip = new Date(ms);
-  // faengt normalisierte Scheindaten ab (z. B. 2026-02-31 -> 03-03)
-  if (roundtrip.getUTCFullYear() !== j || roundtrip.getUTCMonth() !== m - 1 || roundtrip.getUTCDate() !== t) return null;
-  const jetzt = new Date();
-  const tage = Math.round((Date.UTC(jetzt.getFullYear(), jetzt.getMonth(), jetzt.getDate()) - ms) / 86400000);
-  return Number.isFinite(tage) ? tage : null;
-})();
-(function kennzeichneAlter() {
+
+// ==================== Gemeinsames: Alters-Kennzeichnung ====================
+function kennzeichneAlter(DATA, listArt) {
+  document.getElementById('ttl').innerHTML = '&#128230; ' + listArt + ' ' + DATA.tour + ' &middot; ' + (DATA.datum || '&#8211;');
+  document.title = listArt + ' ' + DATA.tour + ' ' + (DATA.datum || '');
+  const alterTage = (() => {
+    const s = String(DATA.datum || '');
+    if (s.length === 0) return '';
+    if (s.length !== 10 || s.charAt(4) !== '-' || s.charAt(7) !== '-') return null;
+    const nurZiffern = x => { for (let i = 0; i < x.length; i++) { const c = x.charCodeAt(i); if (c < 48 || c > 57) return false; } return x.length > 0; };
+    const jS = s.slice(0, 4), mS = s.slice(5, 7), tS = s.slice(8, 10);
+    if (!nurZiffern(jS) || !nurZiffern(mS) || !nurZiffern(tS)) return null;
+    const j = Number(jS), m = Number(mS), t = Number(tS);
+    if (j < 2000 || j > 2999 || m < 1 || m > 12 || t < 1 || t > 31) return null;
+    const ms = Date.UTC(j, m - 1, t);
+    const roundtrip = new Date(ms);
+    if (roundtrip.getUTCFullYear() !== j || roundtrip.getUTCMonth() !== m - 1 || roundtrip.getUTCDate() !== t) return null;
+    const jetzt = new Date();
+    const tage = Math.round((Date.UTC(jetzt.getFullYear(), jetzt.getMonth(), jetzt.getDate()) - ms) / 86400000);
+    return Number.isFinite(tage) ? tage : null;
+  })();
   const bd = document.getElementById('agebadge'), br = document.getElementById('agebar');
   const setBanner = (klasse, haupt, sub) => {
     br.textContent = '';
@@ -192,32 +223,533 @@ const alterTage = (() => {
     : '';
   if (alterTage === '') { bd.className = 'agebadge none'; bd.textContent = 'KEINE LISTE'; return; }
   if (alterTage === null) {
-    bd.className = 'agebadge pruef'; bd.textContent = 'DATUM PR\u00DCFEN';
-    setBanner('warn', 'Das Datum dieser Packliste ist unbrauchbar.', 'Stand nicht bestimmbar - vor dem Packen den aktuellen Stand pr\u00fcfen.');
-    document.title = 'DATUM PR\u00DCFEN - ' + document.title;
+    bd.className = 'agebadge pruef'; bd.textContent = 'DATUM PR\u00dcFEN';
+    setBanner('warn', 'Das Datum dieser Liste ist unbrauchbar.', 'Stand nicht bestimmbar - vor dem Packen den aktuellen Stand pr\u00fcfen.');
+    document.title = 'DATUM PR\u00dcFEN - ' + document.title;
     return;
   }
   if (alterTage < 0) {
-    bd.className = 'agebadge pruef'; bd.textContent = 'DATUM PR\u00DCFEN';
-    setBanner('warn', 'Das Datum dieser Packliste liegt in der Zukunft (' + dstr + ').',
+    bd.className = 'agebadge pruef'; bd.textContent = 'DATUM PR\u00dcFEN';
+    setBanner('warn', 'Das Datum dieser Liste liegt in der Zukunft (' + dstr + ').',
       'Stand nicht plausibel - vor dem Packen den aktuellen Stand pr\u00fcfen.');
-    document.title = 'DATUM PR\u00DCFEN - ' + document.title;
+    document.title = 'DATUM PR\u00dcFEN - ' + document.title;
     return;
   }
   if (alterTage === 0) { bd.className = 'agebadge fresh'; bd.textContent = 'HEUTE'; return; }
   if (alterTage === 1) {
     bd.className = 'agebadge warn'; bd.textContent = 'VON GESTERN';
-    setBanner('warn', 'Diese Packliste ist von GESTERN (' + dstr + ')',
+    setBanner('warn', 'Diese Liste ist von GESTERN (' + dstr + ')',
       'Pr\u00fcfen, ob inzwischen eine neue Liste ver\u00f6ffentlicht wurde.');
     document.title = '(gestern) ' + document.title;
     return;
   }
   bd.className = 'agebadge old'; bd.textContent = alterTage + ' TAGE ALT';
-  setBanner('old', 'VERALTETE PACKLISTE \u00B7 ' + alterTage + ' Tage alt (' + dstr + ')',
-    'Nicht nach dieser Liste packen, bevor der aktuelle Stand gepr\u00fcft ist.');
+  setBanner('old', 'VERALTETE LISTE \u00b7 ' + alterTage + ' Tage alt (' + dstr + ')',
+    'Nicht nach dieser Liste arbeiten, bevor der aktuelle Stand gepr\u00fcft ist.');
   document.body.classList.add('veraltet');
   document.title = 'VERALTET (' + alterTage + ' Tage) - ' + document.title;
-})();
+}
+
+function startApp(DATA) {
+  if (DATA.plan && DATA.machines && DATA.machines.length) { flowApp(DATA); }
+  else { legacyApp(DATA); }
+}
+
+// ==================== NEU: Lagerliste (Taetigkeiten-Flow mit Timern) ====================
+// Ein einziger gefuehrter Tour-Ablauf nach Taetigkeitenkatalog (Nutzerauftrag 2026-09-28):
+// Lager (Nr. 1-3) -> je Standort: je Automat (Nr. 5-12, 14) + Standort-Abschluss (13, 15, 16)
+// -> Lager (Nr. 17-18). Timer starten automatisch beim Schritt und stoppen beim Abhaken.
+// Sollzeiten kommen frisch berechnet aus dem Payload (Katalog x gebuchte Mengen des Tages).
+function flowApp(DATA) {
+  kennzeichneAlter(DATA, 'Lagerliste');
+  const P = DATA.plan;
+  const KEY = 'lagerliste_' + DATA.datum + '_' + DATA.tour;
+  let state = JSON.parse(LS.getItem(KEY) || 'null') || {};
+  if (!state.items) {
+    // Uebernahme eines evtl. schon begonnenen Stands der klassischen Packliste desselben Tages,
+    // damit beim Umstieg auf die Lagerliste kein Pack-Fortschritt verloren geht.
+    try {
+      const alt = JSON.parse(LS.getItem('packliste_' + DATA.datum + '_' + DATA.tour) || 'null');
+      if (alt && alt.items) { state.items = alt.items; state.part = alt.part || {}; }
+    } catch(e) {}
+  }
+  if (!state.items) state.items = {};
+  if (!state.part) state.part = {};
+  if (!state.hist) state.hist = [];
+  if (!state.done) state.done = {};
+  if (!state.skipd) state.skipd = {};
+  if (!state.zeit) state.zeit = {};
+  if (typeof state.tab !== 'number') state.tab = 0;      // Kisten-Tab im Pack-Schritt
+  if (typeof state.step !== 'number') state.step = 0;    // Index in STEPS
+  if (typeof state.view !== 'number') state.view = 0;    // 0 = Ablauf, 1 = Fehlt
+  const save = () => LS.setItem(KEY, JSON.stringify(state));
+
+  // ---- Schritt-Liste aufbauen ----
+  const T = n => (P.taet || {})[String(n)] || null;
+  const sollMin = (n, menge) => { const t = T(n); if (!t) return 0; let v = t.s * menge; if (String(t.e).charAt(0) === 's') v /= 60; return v; };
+  const pufVon = n => { const t = T(n); return (t && typeof t.p === 'number') ? t.p : 0.1; };
+  const M_BY_DEV = {}; DATA.machines.forEach((m, i) => { M_BY_DEV[m.device] = i; });
+  const stkVon = m => m.items.reduce((a, it) => a + it.qty, 0);
+  const stkGes = DATA.machines.reduce((a, m) => a + stkVon(m), 0);
+  const STEPS = [];
+  let fahrtN = 0;
+  const autoBlock = (dev) => {
+    const mi = M_BY_DEV[dev]; if (mi == null) return;
+    const m = DATA.machines[mi];
+    const add = (nr, titel, o) => STEPS.push(Object.assign({id: 'a' + dev + '_' + nr, nr, t: titel, sub: m.label, dev, mi}, o || {}));
+    add(5, 'Kisten hin & Automat \u00f6ffnen', {soll: sollMin(5, 1)});
+    add(6, 'M\u00fcnzgeld & Scheine entnehmen', {soll: sollMin(6, 1)});
+    add(7, 'M\u00fcnzstau & Fehlerprotokoll pr\u00fcfen', {soll: sollMin(7, 1)});
+    add(8, 'M\u00fcnzgeld bef\u00fcllen', {skip: 1, soll: sollMin(8, 1)});
+    add(9, 'ToDos am Automat erledigen', {skip: 1, soll: sollMin(9, 1)});
+    add(10, 'Automat bef\u00fcllen', {mode: 'fill', soll: sollMin(10, stkVon(m))});
+    add(11, 'Automat schlie\u00dfen', {soll: sollMin(11, 1)});
+    add(12, 'Schlusscheck', {soll: sollMin(12, 1)});
+    add(14, 'Grobe Reinigung', {soll: sollMin(14, 1)});
+  };
+  STEPS.push({id: 't1', nr: 1, t: 'Kisten packen', sub: 'Lager \u00b7 alle Kisten dieser Tour', mode: 'pack', soll: sollMin(1, stkGes)});
+  if ((P.todos || 0) > 0) STEPS.push({id: 't2', nr: 2, t: 'Zubeh\u00f6r packen (ToDos)', sub: 'Lager \u00b7 nur bei Bedarf', skip: 1, soll: sollMin(2, P.todos)});
+  STEPS.push({id: 't3', nr: 3, t: 'Kisten ins Auto packen', sub: 'Lager', soll: sollMin(3, 1)});
+  const seen = {};
+  (P.standorte || []).forEach((st, si) => {
+    const devs = (st.devs || []).filter(d => M_BY_DEV[d] != null);
+    if (!devs.length) return;
+    fahrtN++; STEPS.push({id: 'f' + fahrtN, nr: 4, t: 'Fahren', sub: '\u2192 ' + st.name, fahrt: 1});
+    devs.forEach(dev => { seen[dev] = 1; autoBlock(dev); });
+    STEPS.push({id: 's' + si + '_13', nr: 13, t: 'M\u00fcll wechseln', sub: st.name, soll: sollMin(13, 1)});
+    STEPS.push({id: 's' + si + '_15', nr: 15, t: 'Kehren', sub: st.name, soll: sollMin(15, 1)});
+    if (st.kiosk) STEPS.push({id: 's' + si + '_16', nr: 16, t: 'Wischen (Kioskladen)', sub: st.name, soll: sollMin(16, 1)});
+  });
+  // Sicherheitsnetz: Automaten, die in keinem Standort auftauchen, bekommen trotzdem ihren Block.
+  DATA.machines.forEach(m => {
+    if (seen[m.device]) return;
+    fahrtN++; STEPS.push({id: 'f' + fahrtN, nr: 4, t: 'Fahren', sub: '\u2192 ' + m.label, fahrt: 1});
+    autoBlock(m.device);
+  });
+  fahrtN++; STEPS.push({id: 'f' + fahrtN, nr: 4, t: 'Fahren', sub: '\u2192 zur\u00fcck ins Lager', fahrt: 1});
+  STEPS.push({id: 't17', nr: 17, t: 'Auto entladen', sub: 'Lager \u00b7 Geld in Tresor, M\u00fcll, Restware', soll: sollMin(17, 1)});
+  STEPS.push({id: 't18', nr: 18, t: 'Abschlie\u00dfen & fertig', sub: 'Lager', soll: sollMin(18, 1)});
+  if (state.step >= STEPS.length) state.step = 0;
+
+  // ---- Timer ----
+  const ist = id => (state.zeit[id] || 0) + (state.aktiv === id && state.seit ? (Date.now() - state.seit) / 1000 : 0);
+  const istGes = () => STEPS.reduce((a, s) => a + ist(s.id), 0);
+  const fahrtIst = () => STEPS.filter(s => s.fahrt).reduce((a, s) => a + ist(s.id), 0);
+  const sollGesMin = STEPS.reduce((a, s) => a + (s.soll || 0), 0) + (P.fahrzeit || 0);
+  function stopTimer() {
+    if (state.aktiv && state.seit) state.zeit[state.aktiv] = (state.zeit[state.aktiv] || 0) + (Date.now() - state.seit) / 1000;
+    state.aktiv = null; state.seit = null;
+  }
+  function laufe(i) {
+    stopTimer();
+    state.step = i;
+    const s = STEPS[i];
+    delete state.done[s.id]; delete state.skipd[s.id];
+    state.aktiv = s.id; state.seit = Date.now();
+    state.view = 0;
+    save(); render(); ansageSchritt();
+  }
+  const naechsterOffen = from => {
+    for (let i = from; i < STEPS.length; i++) if (!state.done[STEPS[i].id] && !state.skipd[STEPS[i].id]) return i;
+    for (let i = 0; i < from; i++) if (!state.done[STEPS[i].id] && !state.skipd[STEPS[i].id]) return i;
+    return -1;
+  };
+  window.springe = i => laufe(i);
+  window.stepZurueck = () => { if (state.step > 0) laufe(state.step - 1); };
+  const offenPack = () => DATA.machines.reduce((n, m) => n + m.items.filter(it => !st(k(m, it))).length, 0);
+  window.fertig = () => {
+    const s = STEPS[state.step];
+    if (s.mode === 'pack' && offenPack() > 0) return;
+    stopTimer(); state.done[s.id] = 1;
+    if (navigator.vibrate) navigator.vibrate(30);
+    const n = naechsterOffen(state.step + 1);
+    if (n < 0) { state.aktiv = null; save(); render(); speak('Tour fertig. Stark!'); }
+    else laufe(n);
+  };
+  window.skipStep = () => {
+    const s = STEPS[state.step];
+    stopTimer(); state.skipd[s.id] = 1;
+    const n = naechsterOffen(state.step + 1);
+    if (n < 0) { state.aktiv = null; save(); render(); }
+    else laufe(n);
+  };
+  // Automatischer Timer-Start beim Oeffnen (Nutzerauftrag: "automatisch laufender Timer").
+  if (!state.aktiv && naechsterOffen(0) >= 0) {
+    const first = (!state.done[STEPS[state.step].id] && !state.skipd[STEPS[state.step].id]) ? state.step : naechsterOffen(0);
+    state.step = first; state.aktiv = STEPS[first].id; state.seit = Date.now();
+  }
+
+  // ---- Positions-Mechanik (wie Packliste; Status 0 offen / 1 gepackt / 2 fehlt / 3 Teilmenge) ----
+  const k = (m, it) => m.device + '_' + it.id;
+  const selTxt = it => it.sel.join('+') || '\u2013';
+  const esc = s => String(s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+  const st = key => state.items[key] || 0;
+  const partOf = key => state.part[key] || 0;
+  const missQty = (m, it) => { const s = st(k(m, it)); return s === 2 ? it.qty : s === 3 ? Math.max(0, it.qty - partOf(k(m, it))) : 0; };
+  const missList = () => DATA.machines.flatMap((m, i) => m.items.filter(it => missQty(m, it) > 0).map(it => ({m, i, it, miss: missQty(m, it)})));
+  let ui = {pickKey: null, pickVal: 0};
+  window.mark = (key, val) => {
+    const prev = st(key), prevPart = state.part[key];
+    ui.pickKey = null;
+    if (val === 0) { delete state.items[key]; delete state.part[key]; }
+    else { state.items[key] = val; if (val !== 3) delete state.part[key]; }
+    state.hist.push({key, prev, prevPart});
+    if (state.hist.length > 200) state.hist.shift();
+    render();
+    if (navigator.vibrate) navigator.vibrate(val === 2 ? [40,60,40] : val === 3 ? [30,40,30] : 30);
+    ansageItem(val === 2 ? 'Als fehlend markiert. ' : val === 3 ? 'Teilmenge gebucht. ' : '');
+  };
+  window.markPart = (key, n) => {
+    const prev = st(key), prevPart = state.part[key];
+    ui.pickKey = null;
+    state.items[key] = 3; state.part[key] = n;
+    state.hist.push({key, prev, prevPart});
+    if (state.hist.length > 200) state.hist.shift();
+    render();
+    if (navigator.vibrate) navigator.vibrate([30,40,30]);
+    ansageItem('Teilmenge gebucht. ');
+  };
+  window.startPart = (key, qty) => { ui.pickKey = key; ui.pickVal = qty > 1 ? qty - 1 : 0; render(); };
+  window.pickAdj = (delta, qty) => { ui.pickVal = Math.max(0, Math.min(qty, ui.pickVal + delta)); render(); };
+  window.pickCancel = () => { ui.pickKey = null; render(); };
+  window.pickOk = (key, qty) => { const v = ui.pickVal; if (v >= qty) mark(key, 1); else if (v <= 0) mark(key, 2); else markPart(key, v); };
+  window.undo = () => {
+    const a = state.hist.pop();
+    if (!a) return;
+    ui.pickKey = null;
+    if (a.prev === 0) delete state.items[a.key]; else state.items[a.key] = a.prev;
+    if (a.prevPart == null) delete state.part[a.key]; else state.part[a.key] = a.prevPart;
+    render();
+    if (navigator.vibrate) navigator.vibrate(15);
+  };
+  window.go = i => { state.tab = i; ui.pickKey = null; render(); ansageItem(); };
+  window.zeigeView = v => { state.view = v; save(); render(); };
+
+  // ---- Formatierung ----
+  const fmtM = x => (Math.round(x * 10) / 10).toLocaleString('de-DE', {minimumFractionDigits: 1, maximumFractionDigits: 1});
+  const fmtClock = sec => {
+    sec = Math.max(0, Math.floor(sec));
+    const h = Math.floor(sec / 3600), m = Math.floor((sec % 3600) / 60), s2 = sec % 60;
+    const p = n => (n < 10 ? '0' : '') + n;
+    return (h ? h + ':' + p(m) : m) + ':' + p(s2);
+  };
+  const tmrKlasse = s => {
+    if (!s.soll) return 'tmr';
+    const m = ist(s.id) / 60;
+    if (m > s.soll * (1 + pufVon(s.nr))) return 'tmr o';
+    if (m > s.soll) return 'tmr w';
+    return 'tmr';
+  };
+
+  function row(m, it, cls, boxTxt, withX, qtyHtml, sub) {
+    const key = k(m, it);
+    const x = withX ? `<button class="xbtn" onclick="event.stopPropagation();mark('${key}',2)">\u2717 fehlt</button>` : '';
+    const subH = sub ? `<span class="psub">${esc(sub)}</span>` : '';
+    const q = qtyHtml != null ? qtyHtml : ('\u00d7 ' + it.qty);
+    return `<li class="${cls}" onclick="mark('${key}',${cls ? 0 : 1})"><span class="box">${boxTxt}</span><span class="sel">${selTxt(it)}</span><span class="nm">${esc(it.name)}<span class="art">${esc(it.art)}</span>${subH}</span>${x}<span class="qty">${q}</span></li>`;
+  }
+  function partPicker(it, key) {
+    const v = ui.pickVal, mv = it.qty - v;
+    return `<div class="partpick">
+      <div class="pq">Wie viele <b>tats\u00e4chlich</b>? (Bedarf ${it.qty})</div>
+      <div class="pickrow"><button class="stepbtn" ${v <= 0 ? 'disabled' : ''} onclick="pickAdj(-1,${it.qty})">\u2212</button><span class="pickval">${v}</span><button class="stepbtn" ${v >= it.qty ? 'disabled' : ''} onclick="pickAdj(1,${it.qty})">+</button></div>
+      <div class="pickmiss">${mv > 0 ? ('\u26a0 ' + mv + ' fehlt \u2013 wird gemeldet') : '\u2705 alles vorhanden'}</div>
+      <div class="pickact"><button class="pickok" onclick="pickOk('${key}',${it.qty})">\u2713 \u00dcbernehmen</button><button class="pickcancel" onclick="pickCancel()">Abbrechen</button></div>
+    </div>`;
+  }
+
+  // ---- Renderer ----
+  function timerStreifen(s) {
+    const sollTxt = s.fahrt
+      ? `Fahrzeit gesamt<br><b>${fmtM(fahrtIst() / 60)}</b> / ${fmtM(P.fahrzeit || 0)} min`
+      : (s.soll ? `Soll<br><b>${fmtM(s.soll)} min</b>` : '');
+    return `<div class="tmrrow"><span class="${tmrKlasse(s)}" id="tmr">${fmtClock(ist(s.id))}</span><span class="soll">${sollTxt}</span></div>`;
+  }
+  function packUI(h) {
+    const FEHLTN = DATA.machines.length;
+    if (state.tab >= FEHLTN) state.tab = 0;
+    h += '<div class="tabs">' + DATA.machines.map((mm, i) => {
+      const r = mm.items.filter(it => !st(k(mm, it))).length;
+      const rStk = mm.items.reduce((a, it) => a + (st(k(mm, it)) ? 0 : it.qty), 0);
+      const cls = 'tab' + (i === state.tab ? ' act' : '') + (r === 0 ? ' done' : '');
+      return `<div class="${cls}" onclick="go(${i})">${i + 1}\u00b7${esc(mm.label)}${r === 0 ? ' \u2713' : ' (' + rStk + ' Stk.)'}</div>`;
+    }).join('') + '</div>';
+    const m = DATA.machines[state.tab];
+    const open = m.items.filter(it => !st(k(m, it)));
+    const miss = m.items.filter(it => st(k(m, it)) === 2);
+    const partial = m.items.filter(it => st(k(m, it)) === 3);
+    const done = m.items.filter(it => st(k(m, it)) === 1);
+    if (open.length) {
+      const it = open[0], key = k(m, it);
+      h += `<div class="now">
+        <div class="mhead"><span class="kbadge">Kiste ${state.tab + 1}</span><span class="mname">${esc(m.label)}</span></div>
+        <div class="lbl">JETZT PACKEN</div>
+        <div class="nowrow"><span class="nowsel">${selTxt(it)}</span><span class="nowqty">\u00d7 ${it.qty}</span></div>
+        <div class="nowname">${esc(it.name)}</div><div class="nowart">${esc(it.art)}</div>`;
+      if (ui.pickKey === key) h += partPicker(it, key);
+      else h += `<div class="btnrow"><button class="nowbtn" onclick="mark('${key}',1)">\u2713 Gepackt</button></div>
+        <div class="btnrow2"><button class="partbtn" onclick="startPart('${key}',${it.qty})">\u2248 Teilmenge</button><button class="missbtn" onclick="mark('${key}',2)">\u2717 Nicht vorr\u00e4tig</button></div>`;
+      h += `</div>`;
+    } else {
+      const fehltN = miss.length + partial.length;
+      h += fehltN
+        ? `<div class="alldone w">\u26a0 Kiste ${state.tab + 1} fertig \u2013 ${fehltN} Position(en) mit Fehlmenge (siehe \u201eFehlt\u201c)</div>`
+        : `<div class="alldone">\u2705 Kiste ${state.tab + 1} \u201e${esc(m.label)}\u201c komplett!</div>`;
+    }
+    if (open.length > 1)
+      h += '<h3>Noch offen</h3><ul>' + open.slice(1).map(it => row(m, it, '', '', true)).join('') + '</ul>';
+    if (partial.length)
+      h += '<h3 class="warn">Teilweise gepackt</h3><ul>' + partial.map(it => row(m, it, 'miss', '\u00bd', false, '\u00d7 ' + missQty(m, it), partOf(k(m, it)) + ' gepackt \u00b7 Rest fehlt')).join('') + '</ul>';
+    if (miss.length)
+      h += '<h3 class="warn">Nicht vorr\u00e4tig</h3><ul>' + miss.map(it => row(m, it, 'miss', '!', false)).join('') + '</ul>';
+    if (done.length)
+      h += '<h3>Gepackt</h3><ul>' + done.map(it => row(m, it, 'done', '\u2713', false)).join('') + '</ul>';
+    return h;
+  }
+  function fillUI(h, s) {
+    const m = DATA.machines[s.mi];
+    h += `<div class="fillhint">Alles rein wie gepackt. Passt etwas <b>nicht in den Automat</b> oder stimmt der Bestand nicht? Position antippen bzw. \u201efehlt\u201c \u2013 die Abweichung landet in der Fehlt-Meldung und der Bestand wird korrigiert.</div>`;
+    h += '<ul>' + m.items.map(it => {
+      const s2 = st(k(m, it));
+      if (ui.pickKey === k(m, it)) return `<li style="display:block">${partPicker(it, k(m, it))}</li>`;
+      if (s2 === 1) return row(m, it, 'done', '\u2713', true);
+      if (s2 === 2) return row(m, it, 'miss', '!', false);
+      if (s2 === 3) return row(m, it, 'miss', '\u00bd', false, '\u00d7 ' + missQty(m, it), partOf(k(m, it)) + ' \u00b7 Rest fehlt');
+      return row(m, it, '', '', true);
+    }).join('') + '</ul>';
+    h += `<div class="hint">Teilmenge am Automat: Position antippen (\u00f6ffnet sie wieder) und dann \u201e\u2248 Teilmenge\u201c im Lager-Schritt nutzen \u2013 oder direkt \u201efehlt\u201c, wenn nichts reinpasst.</div>`;
+    return h;
+  }
+  function ablaufListe(h) {
+    let grp = null;
+    h += '<h3>Ablauf</h3><div class="steps">';
+    STEPS.forEach((s, i) => {
+      const g = s.dev != null ? s.sub : (s.nr >= 13 && s.nr <= 16 ? s.sub : (s.fahrt ? null : 'Lager'));
+      if (g !== grp && g !== null) { h += `</div><div class="sgroup">${esc(g)}</div><div class="steps">`; grp = g; }
+      const sec = ist(s.id);
+      const cls = 'srow' + (i === state.step ? ' cur' : '') + (state.done[s.id] ? ' ok' : '') + (state.skipd[s.id] ? ' sk' : '');
+      const zeit = sec >= 1 ? fmtClock(sec) : (s.soll ? '~' + fmtM(s.soll) + "'" : '');
+      h += `<div class="${cls}" onclick="springe(${i})"><span class="snr">${s.nr}</span><span class="snm">${esc(s.t)}${s.dev == null && s.sub ? '<small>' + esc(s.sub) + '</small>' : ''}</span><span class="szeit">${zeit}</span></div>`;
+    });
+    h += '</div>';
+    h += '<button class="report z" onclick="reportZeit()">\u23f1 Zeit-Protokoll teilen</button>';
+    return h;
+  }
+
+  function render() {
+    const mc = missList().length;
+    document.getElementById('navzone').innerHTML =
+      `<div class="navtabs"><div class="navtab${state.view === 0 ? ' act' : ''}" onclick="zeigeView(0)">Ablauf</div>` +
+      `<div class="navtab warn${state.view === 1 ? ' act' : ''}" onclick="zeigeView(1)">\u26a0 Fehlt (${mc})</div></div>`;
+    const stkGep = DATA.machines.reduce((n, m) => n + m.items.reduce((a, it) => { const s2 = st(k(m, it)); return a + (s2 === 1 ? it.qty : s2 === 3 ? Math.min(partOf(k(m, it)), it.qty) : 0); }, 0), 0);
+    const stkFehlt = missList().reduce((a, e) => a + e.miss, 0);
+    document.getElementById('prog').innerHTML = `<b>${stkGep}</b> / ${stkGes} St\u00fcck${stkFehlt ? ` \u00b7 <i>${stkFehlt} \u26a0</i>` : ''}`;
+    document.getElementById('zeitges').innerHTML = `\u23f1 <b>${fmtM(istGes() / 60)}</b> / ${fmtM(sollGesMin)} min`;
+    const doneN = STEPS.filter(s => state.done[s.id] || state.skipd[s.id]).length;
+    document.getElementById('bar').style.width = (doneN / STEPS.length * 100) + '%';
+
+    let h = '';
+    if (state.view === 1) {
+      const ml = missList();
+      h += '<h3 class="warn">Fehlmengen \u2013 bitte melden</h3>';
+      if (ml.length) {
+        let lastI = -1;
+        for (const e of ml) {
+          if (e.i !== lastI) { if (lastI >= 0) h += '</ul>'; h += `<div class="mgroup">Kiste ${e.i + 1} \u00b7 ${esc(e.m.label)} <span class="dev">#${esc(e.m.device)}</span></div><ul>`; lastI = e.i; }
+          const s2 = st(k(e.m, e.it));
+          h += row(e.m, e.it, 'miss', s2 === 3 ? '\u00bd' : '!', false, '\u00d7 ' + e.miss, s2 === 3 ? (partOf(k(e.m, e.it)) + ' gepackt \u00b7 Rest fehlt') : '');
+        }
+        h += '</ul><button class="report" onclick="reportFehlt()">\ud83d\udce4 Fehlt-Liste melden</button>';
+        h += '<div class="hint">\u201eMelden\u201c \u00f6ffnet das Teilen-Men\u00fc \u2013 die Liste bitte wie besprochen senden, damit der Bestand korrigiert wird. Antippen macht eine Markierung r\u00fcckg\u00e4ngig.</div>';
+      } else {
+        h += '<div class="alldone">\u2705 Nichts fehlt!</div>';
+      }
+      document.getElementById('main').innerHTML = h;
+      document.getElementById('botbar').innerHTML = `<button class="stepback" onclick="zeigeView(0)">\u2039 Ablauf</button><div class="nx"><div class="lbl">FEHLT-\u00dcBERSICHT</div></div>`;
+      save(); window.scrollTo(0, 0);
+      return;
+    }
+    const alleFertig = naechsterOffen(0) < 0;
+    if (alleFertig) {
+      h += `<div class="alldone">\u2705 Tour komplett! \u23f1 ${fmtM(istGes() / 60)} min (Soll ${fmtM(sollGesMin)} min)</div>`;
+      h += '<button class="report z" onclick="reportZeit()">\u23f1 Zeit-Protokoll teilen</button>';
+      if (mc) h += '<button class="report" onclick="zeigeView(1)">\u26a0 Fehlt-Liste offen (' + mc + ')</button>';
+      h = ablaufListe(h);
+      document.getElementById('main').innerHTML = h;
+      document.getElementById('botbar').innerHTML = `<button class="stepback" onclick="stepZurueck()">\u2039 Schritt</button><div class="nx"><div class="lbl">TOUR FERTIG \ud83c\udf89</div></div>`;
+      save(); return;
+    }
+    const s = STEPS[state.step];
+    h += `<div class="stepcard"><div class="shead"><span class="kbadge">Nr ${s.nr}</span><span class="stitle">${esc(s.t)}</span><span class="ssub">${esc(s.sub || '')}</span></div>${timerStreifen(s)}</div>`;
+    if (s.mode === 'pack') h = packUI(h);
+    else if (s.mode === 'fill') h = fillUI(h, s);
+    h = ablaufListe(h);
+    document.getElementById('main').innerHTML = h;
+
+    const offen = s.mode === 'pack' ? offenPack() : 0;
+    const fBtn = s.mode === 'pack' && offen > 0
+      ? `<button class="fertigbtn" disabled>Noch ${offen} Positionen \u2026</button>`
+      : `<button class="fertigbtn" onclick="fertig()">\u2713 Fertig \u2013 weiter</button>`;
+    const sBtn = s.skip ? `<button class="skipbtn" style="flex:0 0 auto" onclick="skipStep()">\u00dcberspringen</button>` : '';
+    const uBtn = (s.mode === 'pack' || s.mode === 'fill') ? `<button class="undo" id="undo" onclick="undo()" ${state.hist.length ? '' : 'disabled'}>\u21a9</button>` : '';
+    document.getElementById('botbar').innerHTML = `<button class="stepback" onclick="stepZurueck()" ${state.step ? '' : 'disabled'}>\u2039</button>${uBtn}${sBtn}${fBtn}`;
+    save();
+    window.scrollTo(0, 0);
+  }
+
+  // Sekunden-Tick: nur Timer-Anzeigen aktualisieren (kein Voll-Render), alle 10 s speichern.
+  let tickN = 0;
+  setInterval(() => {
+    if (state.view !== 0) return;
+    const s = STEPS[state.step];
+    const el = document.getElementById('tmr');
+    if (el && state.aktiv === s.id) { el.textContent = fmtClock(ist(s.id)); el.className = tmrKlasse(s); }
+    const zg = document.getElementById('zeitges');
+    if (zg) zg.innerHTML = `\u23f1 <b>${fmtM(istGes() / 60)}</b> / ${fmtM(sollGesMin)} min`;
+    if ((++tickN % 10) === 0) save();
+  }, 1000);
+
+  // ---- Meldungen ----
+  window.reportFehlt = async () => {
+    const ml = missList();
+    if (!ml.length) return;
+    let txt = 'FEHLT-MELDUNG Packliste ' + DATA.tour + ' ' + DATA.datum + '\n';
+    let lastI = -1;
+    for (const e of ml) {
+      if (e.i !== lastI) { txt += '\nKiste ' + (e.i + 1) + ' \u00b7 ' + e.m.label + ' (Device ' + e.m.device + '):\n'; lastI = e.i; }
+      txt += '- Anwahl ' + e.it.sel.join('+') + ' \u00b7 ' + e.miss + '\u00d7 ' + e.it.name + ' \u00b7 ' + e.it.art + ' \u00b7 [id ' + e.it.id + ']\n';
+    }
+    txt += '\nGesamt: ' + ml.length + ' Position(en) mit Fehlmenge \u2013 bitte Bestand korrigieren.';
+    await teile('Fehlt-Meldung Packliste ' + DATA.tour, txt);
+  };
+  window.reportZeit = async () => {
+    let txt = 'ZEIT-PROTOKOLL Lagerliste ' + DATA.tour + ' ' + DATA.datum + '\n';
+    txt += 'Sollzeiten: ' + (P.quelle || '?') + ' \u00b7 Blatt ' + (P.blatt || '?') + ' \u00b7 Mengen aus dem Run des Tages\n\n';
+    for (const s of STEPS) {
+      const sec = ist(s.id);
+      if (sec < 1 && !state.done[s.id] && !state.skipd[s.id]) continue;
+      txt += '- Nr ' + s.nr + ' \u00b7 ' + s.t + (s.sub ? ' \u00b7 ' + s.sub : '') + ' \u00b7 Ist ' + fmtM(sec / 60) + ' min'
+        + (s.soll ? ' \u00b7 Soll ' + fmtM(s.soll) + ' min' : '')
+        + (state.skipd[s.id] ? ' \u00b7 \u00fcbersprungen' : (state.done[s.id] ? '' : ' \u00b7 offen')) + '\n';
+    }
+    txt += '\nFahrzeit gesamt: Ist ' + fmtM(fahrtIst() / 60) + ' min \u00b7 Soll ' + fmtM(P.fahrzeit || 0) + ' min\n';
+    txt += 'GESAMT: Ist ' + fmtM(istGes() / 60) + ' min \u00b7 Soll ' + fmtM(sollGesMin) + ' min\n';
+    await teile('Zeit-Protokoll Lagerliste ' + DATA.tour, txt);
+  };
+  async function teile(titel, txt) {
+    try { await navigator.share({title: titel, text: txt}); }
+    catch(e) {
+      try { await navigator.clipboard.writeText(txt); document.getElementById('heard').textContent = 'Meldung kopiert \u2013 in Chat/Mail einf\u00fcgen'; }
+      catch(e2) { document.getElementById('heard').textContent = 'Teilen nicht m\u00f6glich \u2013 bitte Screenshot senden'; }
+    }
+  }
+
+  // ---- Sprachausgabe / -steuerung ----
+  let voiceOn = !!state.voiceOn, micOn = false, recog = null, speaking = false;
+  const synth = window.speechSynthesis;
+  const IOS = /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+  const RATE = IOS ? 1.05 : 1.25;
+  function speak(txt) {
+    if (!voiceOn || !synth) return;
+    try {
+      if (recog) { try { recog.abort(); } catch(e){} }
+      speaking = true;
+      synth.cancel();
+      const u = new SpeechSynthesisUtterance(txt);
+      u.lang = 'de-DE'; u.rate = RATE;
+      u.onend = u.onerror = () => { speaking = false; if (micOn) startRecog(); };
+      synth.speak(u);
+    } catch(e) { speaking = false; }
+  }
+  const sprich = it => it.qty + ' mal ' + it.name.replace(/\(.*?\)/g, ' ').replace(/\s+/g, ' ').trim();
+  const aktuelleMaschine = () => {
+    const s = STEPS[state.step];
+    if (s.mode === 'pack') return DATA.machines[state.tab];
+    if (s.mode === 'fill') return DATA.machines[s.mi];
+    return null;
+  };
+  function ansageItem(prefix) {
+    if (!voiceOn || state.view !== 0) return;
+    const m = aktuelleMaschine();
+    if (!m) return;
+    const open = m.items.filter(it => !st(k(m, it)));
+    speak((prefix || '') + (open.length ? sprich(open[0]) : 'Fertig hier.'));
+  }
+  function ansageSchritt() {
+    if (!voiceOn) return;
+    const s = STEPS[state.step];
+    if (s.mode === 'pack' || s.mode === 'fill') { speak('Nummer ' + s.nr + '. ' + s.t + '. '); setTimeout(() => ansageItem(), 50); }
+    else speak('Nummer ' + s.nr + '. ' + s.t + (s.sub ? '. ' + s.sub : '') + '.');
+  }
+  window.toggleVoice = () => {
+    voiceOn = !voiceOn; state.voiceOn = voiceOn; save(); updVB();
+    if (voiceOn) ansageSchritt(); else if (synth) synth.cancel();
+  };
+  const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+  function startRecog() {
+    if (!SR || !micOn) return;
+    try {
+      recog = new SR();
+      recog.lang = 'de-DE'; recog.continuous = true; recog.interimResults = false;
+      recog.onresult = ev => {
+        if (speaking) return;
+        const t = ev.results[ev.results.length - 1][0].transcript.toLowerCase().trim();
+        document.getElementById('heard').textContent = '\u201e' + t + '\u201c';
+        handleVoice(t);
+      };
+      recog.onend = () => { if (micOn && !speaking) { try { recog.start(); } catch(e){} } };
+      recog.onerror = e => {
+        if (e.error === 'not-allowed' || e.error === 'service-not-allowed') {
+          micOn = false; updVB();
+          document.getElementById('heard').textContent = 'Mikrofon nicht erlaubt';
+        }
+      };
+      recog.start();
+    } catch(e){}
+  }
+  function handleVoice(t) {
+    if (state.view !== 0) { if (/zur\u00fcck/.test(t)) zeigeView(0); return; }
+    const s = STEPS[state.step];
+    const m = aktuelleMaschine();
+    if (/schritt fertig|fertig weiter|weiter jetzt/.test(t)) { fertig(); return; }
+    if (/\u00fcberspringen/.test(t)) { if (s.skip) skipStep(); return; }
+    if (m) {
+      const open = m.items.filter(it => !st(k(m, it)));
+      if (/zur\u00fcck|r\u00fcckg\u00e4ngig/.test(t)) undo();
+      else if (/fehlt|nicht da|nicht vorr\u00e4tig|nicht verf\u00fcgbar|leer/.test(t)) { if (open.length) mark(k(m, open[0]), 2); }
+      else if (/gepackt|weiter|okay|erledigt|\bok\b|hab ich/.test(t)) { if (open.length) mark(k(m, open[0]), 1); else fertig(); }
+      else if (/wiederhol|noch ?mal|was war das/.test(t)) ansageItem();
+      else if (/n\u00e4chste kiste/.test(t)) { if (s.mode === 'pack' && state.tab < DATA.machines.length - 1) go(state.tab + 1); }
+    } else {
+      if (/zur\u00fcck/.test(t)) stepZurueck();
+      else if (/fertig|erledigt|weiter|okay|\bok\b/.test(t)) fertig();
+      else if (/wiederhol|noch ?mal/.test(t)) ansageSchritt();
+    }
+  }
+  window.toggleMic = () => {
+    const heard = document.getElementById('heard');
+    if (!SR) { heard.textContent = 'Spracherkennung hier nicht verf\u00fcgbar'; return; }
+    if (!window.isSecureContext) { heard.textContent = 'Mikro braucht HTTPS-Seite'; return; }
+    micOn = !micOn; updVB();
+    if (micOn) {
+      if (!voiceOn) { voiceOn = true; state.voiceOn = true; save(); }
+      heard.textContent = 'H\u00f6re zu \u2026 (\u201egepackt\u201c, \u201efehlt\u201c, \u201efertig\u201c)';
+      startRecog(); updVB();
+    } else { heard.textContent = ''; if (recog) { try { recog.abort(); } catch(e){} } }
+  };
+  function updVB() {
+    document.getElementById('vb').className = 'vbtn' + (voiceOn ? ' on' : '');
+    document.getElementById('mb').className = 'vbtn mic' + (micOn ? ' on' : '');
+  }
+  updVB();
+  if ('wakeLock' in navigator) { const wl = () => navigator.wakeLock.request('screen').catch(()=>{}); wl(); document.addEventListener('visibilitychange', () => { if (!document.hidden) wl(); }); }
+  save();
+  render();
+}
+
+// ==================== Klassische Packliste (Fallback ohne Taetigkeiten-Plan) ====================
+function legacyApp(DATA) {
+kennzeichneAlter(DATA, 'Packliste');
 const KEY = 'packliste_' + DATA.datum + '_' + DATA.tour;
 let state = JSON.parse(LS.getItem(KEY) || '{"items":{},"part":{},"hist":[],"tab":0}');
 if (!state.items) state = {items:{},part:{},hist:[],tab:0};
@@ -248,11 +780,12 @@ function row(m, it, cls, boxTxt, withX, qtyHtml, sub) {
 function render() {
   if (!DATA.machines.length) {
     document.getElementById('main').innerHTML = '<div class="nodata">F\u00fcr die ' + esc(DATA.tour) + ' ist noch keine Liste ver\u00f6ffentlicht.<br>Sie erscheint hier automatisch nach der n\u00e4chsten Bef\u00fcllung.</div>';
-    document.getElementById('prog').textContent = ''; document.getElementById('tabs').innerHTML = '';
+    document.getElementById('prog').textContent = ''; document.getElementById('navzone').innerHTML = '';
     document.getElementById('nx').innerHTML = ''; document.getElementById('undo').disabled = true;
     return;
   }
   const mc = missList().length;
+  document.getElementById('navzone').innerHTML = '<div class="tabs" id="tabs"></div>';
   document.getElementById('tabs').innerHTML = DATA.machines.map((mm,i) => {
     const r = rest(mm);
     // Offene Stueck je Kiste (Nutzerwunsch 2026-09-25, passend zur Stueckzahl im Kopf).

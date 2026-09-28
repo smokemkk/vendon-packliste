@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>OMS Packlisten</title>
+<title>OMS Lagerlisten</title>
 <style>
 :root { --bg:#101418; --card:#1b222b; --fg:#f2f5f8; --dim:#8fa0b0; --acc:#33b5ff; --line:#2a3542; }
 * { box-sizing:border-box; }
@@ -23,7 +23,7 @@ p { color:var(--dim); font-size:13px; margin-top:18px; line-height:1.5; }
 </style>
 </head>
 <body>
-<h1>&#128230; OMS Packlisten</h1>
+<h1>&#128230; OMS Lagerlisten</h1>
 <a href="sl/" data-slug="sl">SL Tour<span class="meta"><em class="chip"></em><i>Donnerstag</i></span></a>
 <a href="b/" data-slug="b">B Tour<span class="meta"><em class="chip"></em><i>Donnerstag</i></span></a>
 <a href="l/" data-slug="l">L Tour<span class="meta"><em class="chip"></em><i>Freitag</i></span></a>
@@ -69,17 +69,17 @@ function alterInTagen(datum, heute) {
     for (const a of zeilen) { const c = a.querySelector('.chip'); c.className = 'chip unknown'; c.textContent = 'STAND ?'; }
     return;
   }
-  for (const a of zeilen) { const c = a.querySelector('.chip'); c.className = 'chip pending'; c.textContent = 'PR\u00DCFE \u2026'; }
+  for (const a of zeilen) { const c = a.querySelector('.chip'); c.className = 'chip pending'; c.textContent = 'PR\u00dcFE \u2026'; }
   const n = new Date();
   const heute = Date.UTC(n.getFullYear(), n.getMonth(), n.getDate());
   for (const a of zeilen) {
     const chip = a.querySelector('.chip');
     let datum;
     try { datum = await standVon(a.getAttribute('data-slug'), pin); }
-    catch (e) { chip.className = 'chip unknown'; chip.textContent = 'NICHT PR\u00DCFBAR'; continue; }
+    catch (e) { chip.className = 'chip unknown'; chip.textContent = 'NICHT PR\u00dcFBAR'; continue; }
     const tage = alterInTagen(datum, heute);
     if (tage === '') { chip.className = 'chip none'; chip.textContent = 'KEINE LISTE'; }
-    else if (tage === null || tage < 0) { chip.className = 'chip pruef'; chip.textContent = 'DATUM PR\u00DCFEN'; }
+    else if (tage === null || tage < 0) { chip.className = 'chip pruef'; chip.textContent = 'DATUM PR\u00dcFEN'; }
     else if (tage === 0) { chip.className = 'chip fresh'; chip.textContent = 'HEUTE'; }
     else if (tage === 1) { chip.className = 'chip warn'; chip.textContent = 'GESTERN'; }
     else { chip.className = 'chip old'; chip.textContent = tage + ' TAGE ALT'; a.classList.add('oldrow'); }
