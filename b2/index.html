@@ -331,12 +331,16 @@ function flowApp(DATA) {
     STEPS.push({id: 's' + si + '_13', nr: 13, t: titel(13), sub: st.name, soll: sollMin(13, 1)});
     STEPS.push({id: 's' + si + '_15', nr: 15, t: titel(15), sub: st.name, soll: sollMin(15, 1)});
     if (st.kiosk) STEPS.push({id: 's' + si + '_16', nr: 16, t: titel(16), sub: st.name, soll: sollMin(16, 1)});
+    // Vor der Weiterfahrt: Kisten zurueck ins Auto. Kontroll-Schritt ohne eigenes Soll
+    // (die zugehoerige Sollzeit ist je Tour bemessen und steckt in Nr. 3).
+    STEPS.push({id: 's' + si + '_3b', nr: '3b', t: titel(3), sub: st.name, ort: 1, soll: 0});
   });
   // Sicherheitsnetz: Automaten, die in keiner Gruppe auftauchen, bekommen trotzdem ihren Block.
   DATA.machines.forEach(m => {
     if (seen[m.device]) return;
     fahrtN++; STEPS.push({id: 'f' + fahrtN, nr: 4, t: titel(4), sub: '\u2192 ' + m.label, fahrt: 1});
     autoBlock(m.device);
+    STEPS.push({id: 'o' + m.device + '_3b', nr: '3b', t: titel(3), sub: m.label, ort: 1, soll: 0});
   });
   fahrtN++; STEPS.push({id: 'f' + fahrtN, nr: 4, t: titel(4), sub: '\u2192 zur\u00fcck', fahrt: 1});
   STEPS.push({id: 't17', nr: 17, t: titel(17), soll: sollMin(17, 1)});
@@ -636,7 +640,7 @@ function flowApp(DATA) {
     let grp = null;
     h += '<h3>Ablauf</h3><div class="steps">';
     STEPS.forEach((s, i) => {
-      const g = s.dev != null ? s.sub : (s.nr >= 13 && s.nr <= 16 ? s.sub : (s.fahrt ? null : 'Lager'));
+      const g = s.dev != null ? s.sub : ((s.ort || (s.nr >= 13 && s.nr <= 16)) ? s.sub : (s.fahrt ? null : 'Lager'));
       if (g !== grp && g !== null) { h += `</div><div class="sgroup">${esc(g)}</div><div class="steps">`; grp = g; }
       const sec = ist(s.id);
       const cls = 'srow' + (i === state.step ? ' cur' : '') + (state.done[s.id] ? ' ok' : '') + (state.skipd[s.id] ? ' sk' : '');
@@ -664,11 +668,17 @@ function flowApp(DATA) {
       zeilen.push({nr, name: titel(nr), anz: steps.length, ist: istM,
                    soll, mp: soll * (1 + pufVon(nr)), annahme: (nr === 8 || nr === 9)});
     }
-    // Feste Kontroll-Schritte ohne Soll (String-Nr., z. B. "3a") an passender Stelle einreihen.
+    // Feste Kontroll-Schritte ohne Soll (String-Nr., z. B. "3a"/"3b") aggregiert einreihen.
+    const extra = {};
     STEPS.forEach(s => {
       if (typeof s.nr !== 'string') return;
-      const zeile = {nr: s.nr, name: s.t, anz: 1, ist: ist(s.id) / 60, soll: 0, mp: 0, annahme: false, ohneSoll: true};
-      const pos = zeilen.findIndex(z => typeof z.nr === 'number' && z.nr > parseInt(s.nr, 10));
+      if (!extra[s.nr]) extra[s.nr] = {nr: s.nr, name: s.t, anz: 0, ist: 0, soll: 0, mp: 0, annahme: false, ohneSoll: true};
+      extra[s.nr].anz++;
+      extra[s.nr].ist += ist(s.id) / 60;
+    });
+    Object.keys(extra).sort().forEach(k => {
+      const zeile = extra[k];
+      const pos = zeilen.findIndex(z => typeof z.nr === 'number' && z.nr > parseInt(zeile.nr, 10));
       if (pos < 0) zeilen.push(zeile); else zeilen.splice(pos, 0, zeile);
     });
     return zeilen;
