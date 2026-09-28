@@ -397,7 +397,7 @@ function flowApp(DATA) {
     endePause(); stopTimer(); state.done[s.id] = 1;
     if (navigator.vibrate) navigator.vibrate(30);
     const n = naechsterOffen(state.step + 1);
-    if (n < 0) { state.aktiv = null; springTop = true; save(); render(); speak('Tour fertig. Stark!'); }
+    if (n < 0) { state.aktiv = null; springTop = true; save(); render(); speak('Tour komplett. Stark!'); }
     else laufe(n);
   };
   window.skipStep = () => {
@@ -422,18 +422,36 @@ function flowApp(DATA) {
   const missQty = (m, it) => { const s = st(k(m, it)); return s === 2 ? it.qty : s === 3 ? Math.max(0, it.qty - partOf(k(m, it))) : 0; };
   const missList = () => DATA.machines.flatMap((m, i) => m.items.filter(it => missQty(m, it) > 0).map(it => ({m, i, it, miss: missQty(m, it)})));
   let ui = {pickKey: null, pickVal: 0};
-  // Scroll-Verhalten (Nutzerfeedback 2026-09-28): Beim Abhaken/Korrigieren bleibt die Ansicht
-  // stehen; nur bei Schritt-, Kisten- oder Ansichtswechsel springt sie nach oben.
-  let springTop = true;
+  // Scroll-Verhalten (Nutzerfeedback 2026-09-28): Nach dem Abhaken springt die Ansicht zum
+  // NAECHSTEN OFFENEN Punkt (#nextitem); bei sonstigen Korrekturen bleibt sie stehen; nur
+  // Schritt-, Kisten- oder Ansichtswechsel springen an den Seitenanfang.
+  let springTop = true, scrollZiel = null;
   function scrollNach(y0) {
-    if (springTop) { window.scrollTo(0, 0); springTop = false; }
-    else window.scrollTo(0, y0);
+    if (springTop) { window.scrollTo(0, 0); springTop = false; scrollZiel = null; return; }
+    if (scrollZiel === 'next') {
+      scrollZiel = null;
+      const el = document.getElementById('nextitem');
+      if (el) {
+        const kopf = (document.querySelector('header') || {}).offsetHeight || 0;
+        window.scrollTo(0, Math.max(0, el.getBoundingClientRect().top + window.scrollY - kopf - 8));
+        return;
+      }
+    }
+    scrollZiel = null;
+    window.scrollTo(0, y0);
+  }
+  // Kisten-/Automatenleiste: aktiven Reiter sichtbar halten (die Leiste wird je Render neu
+  // aufgebaut und stuende sonst wieder ganz links).
+  function leisteZentrieren() {
+    const tb = document.querySelector('.tabs');
+    const akt = tb && tb.querySelector('.tab.act');
+    if (tb && akt) tb.scrollLeft = Math.max(0, akt.offsetLeft - (tb.clientWidth - akt.offsetWidth) / 2);
   }
   window.mark = (key, val) => {
     const prev = st(key), prevPart = state.part[key];
     ui.pickKey = null;
     if (val === 0) { delete state.items[key]; delete state.part[key]; }
-    else { state.items[key] = val; if (val !== 3) delete state.part[key]; }
+    else { state.items[key] = val; if (val !== 3) delete state.part[key]; scrollZiel = 'next'; }
     state.hist.push({key, prev, prevPart});
     if (state.hist.length > 200) state.hist.shift();
     render();
@@ -444,6 +462,7 @@ function flowApp(DATA) {
     const prev = st(key), prevPart = state.part[key];
     ui.pickKey = null;
     state.items[key] = 3; state.part[key] = n;
+    scrollZiel = 'next';
     state.hist.push({key, prev, prevPart});
     if (state.hist.length > 200) state.hist.shift();
     render();
@@ -533,7 +552,7 @@ function flowApp(DATA) {
     const done = m.items.filter(it => st(k(m, it)) === 1);
     if (open.length) {
       const it = open[0], key = k(m, it);
-      h += `<div class="now">
+      h += `<div class="now" id="nextitem">
         <div class="mhead"><span class="kbadge">Kiste ${state.tab + 1}</span><span class="mname">${esc(m.label)}</span></div>
         <div class="lbl">JETZT PACKEN</div>
         <div class="nowrow"><span class="nowsel">${selTxt(it)}</span><span class="nowqty">\u00d7 ${it.qty}</span></div>
@@ -561,6 +580,7 @@ function flowApp(DATA) {
   function fillUI(h, s) {
     const m = DATA.machines[s.mi];
     h += `<div class="fillhint">Alles rein wie gepackt. Passt etwas <b>nicht rein</b> oder stimmt der Bestand nicht? Direkt hier korrigieren: \u2248 = Teilmenge, \u2717 = fehlt komplett \u2013 die Abweichung landet in der Fehlt-Meldung und der Bestand wird korrigiert.</div>`;
+    let nextFrei = true;
     h += '<ul>' + m.items.map(it => {
       const key = k(m, it), s2 = st(key);
       if (ui.pickKey === key) return `<li style="display:block">${partPicker(it, key)}</li>`;
@@ -568,7 +588,9 @@ function flowApp(DATA) {
       if (s2 === 3) return row(m, it, 'miss', '\u00bd', false, '\u00d7 ' + missQty(m, it), partOf(key) + ' \u00b7 Rest fehlt');
       const btns = `<button class="xbtn" onclick="event.stopPropagation();startPart('${key}',${it.qty})">\u2248</button><button class="xbtn" onclick="event.stopPropagation();mark('${key}',2)">\u2717</button>`;
       const cls = s2 === 1 ? 'done' : '';
-      return `<li class="${cls}" onclick="mark('${key}',${s2 ? 0 : 1})"><span class="box">${s2 === 1 ? '\u2713' : ''}</span><span class="sel">${selTxt(it)}</span><span class="nm">${esc(it.name)}<span class="art">${esc(it.art)}</span></span>${btns}<span class="qty">\u00d7 ${it.qty}</span></li>`;
+      const idH = (s2 === 0 && nextFrei) ? ' id="nextitem"' : '';
+      if (s2 === 0 && nextFrei) nextFrei = false;
+      return `<li class="${cls}"${idH} onclick="mark('${key}',${s2 ? 0 : 1})"><span class="box">${s2 === 1 ? '\u2713' : ''}</span><span class="sel">${selTxt(it)}</span><span class="nm">${esc(it.name)}<span class="art">${esc(it.art)}</span></span>${btns}<span class="qty">\u00d7 ${it.qty}</span></li>`;
     }).join('') + '</ul>';
     return h;
   }
@@ -649,6 +671,7 @@ function flowApp(DATA) {
     const pBtn = `<button class="stepback pause${state.pausiert ? ' on' : ''}" onclick="togglePause()">${state.pausiert ? '\u25b6' : '\u23f8'}</button>`;
     document.getElementById('botbar').innerHTML = `<button class="stepback" onclick="stepZurueck()" ${state.step ? '' : 'disabled'}>\u2039</button>${pBtn}${uBtn}${sBtn}${fBtn}`;
     save();
+    leisteZentrieren();
     scrollNach(y0);
   }
 
@@ -706,7 +729,7 @@ function flowApp(DATA) {
 
   // ---- Sprachausgabe / -steuerung ----
   let voiceOn = !!state.voiceOn, micOn = false, recog = null, speaking = false;
-  let recLive = false, sprachEnde = 0;
+  let recLive = false, sprachEnde = 0, uGen = 0;
   const synth = window.speechSynthesis;
   const IOS = /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
   const RATE = IOS ? 1.05 : 1.25;
@@ -721,7 +744,10 @@ function flowApp(DATA) {
       synth.cancel();
       const u = new SpeechSynthesisUtterance(txt);
       u.lang = 'de-DE'; u.rate = RATE;
-      u.onend = u.onerror = () => { speaking = false; sprachEnde = Date.now(); if (micOn && !recLive) startRecog(); };
+      // Generationszaehler: Callbacks einer per cancel() verworfenen Ansage duerfen die
+      // Echo-Sperre der laufenden Ansage nicht vorzeitig aufheben.
+      const g = ++uGen;
+      u.onend = u.onerror = () => { if (g !== uGen) return; speaking = false; sprachEnde = Date.now(); if (micOn && !recLive) startRecog(); };
       synth.speak(u);
     } catch(e) { speaking = false; }
   }
@@ -763,15 +789,21 @@ function flowApp(DATA) {
         document.getElementById('heard').textContent = '\u201e' + t + '\u201c';
         handleVoice(t);
       };
-      recog.onend = () => { recLive = false; if (micOn && !speaking) { try { recog.start(); } catch(e){} } };
+      recog.onend = () => { recLive = false; if (micOn && !speaking) { try { recog.start(); recLive = true; } catch(e){} } };
       recog.onerror = e => {
+        recLive = false;
         if (e.error === 'not-allowed' || e.error === 'service-not-allowed') {
-          micOn = false; recLive = false; updVB();
+          micOn = false; updVB();
           document.getElementById('heard').textContent = 'Mikrofon nicht erlaubt';
         }
       };
       recog.start();
-    } catch(e){}
+      recLive = true;
+    } catch(e) {
+      // Synchroner Startfehler: sichtbar machen statt still ein "aktives" Mikro anzuzeigen.
+      recLive = false; micOn = false; updVB();
+      document.getElementById('heard').textContent = 'Mikro-Start fehlgeschlagen \u2013 \ud83c\udfa4 erneut antippen';
+    }
   }
   function handleVoice(t) {
     if (state.view !== 0) { if (/zur\u00fcck/.test(t)) zeigeView(0); return; }
@@ -789,8 +821,10 @@ function flowApp(DATA) {
       else if (/wiederhol|noch ?mal|was war das/.test(t)) ansageItem();
       else if (/n\u00e4chste kiste/.test(t)) { if (s.mode === 'pack' && state.tab < DATA.machines.length - 1) go(state.tab + 1); }
     } else {
+      // Kurz-Aeusserungen verlangen: eine (echote) lange Schritt-Ansage wie
+      // "Nummer 18. Abschliessen und fertig." darf den Schritt nicht abschliessen.
       if (/zur\u00fcck/.test(t)) stepZurueck();
-      else if (/fertig|erledigt|weiter|okay|\bok\b/.test(t)) fertig();
+      else if (t.length < 20 && /fertig|erledigt|weiter|okay|\bok\b/.test(t)) fertig();
       else if (/wiederhol|noch ?mal/.test(t)) ansageSchritt();
     }
   }
@@ -836,9 +870,9 @@ const missQty = (m,it) => { const s = st(k(m,it)); return s===2 ? it.qty : s===3
 const rest = m => m.items.filter(it => !st(k(m,it))).length;
 const missList = () => DATA.machines.flatMap((m,i) => m.items.filter(it => missQty(m,it) > 0).map(it => ({m, i, it, miss: missQty(m,it)})));
 let ui = {pickKey:null, pickVal:0};
-// Scroll-Verhalten (Nutzerfeedback 2026-09-28): beim Abhaken bleibt die Ansicht stehen,
-// nur ein Kisten-/Tab-Wechsel springt nach oben.
-let springTop = true;
+// Scroll-Verhalten (Nutzerfeedback 2026-09-28): nach dem Abhaken zum naechsten offenen
+// Punkt (#nextitem), sonst Position halten; nur Kisten-/Tab-Wechsel springt nach oben.
+let springTop = true, scrollZiel = null;
 
 function row(m, it, cls, boxTxt, withX, qtyHtml, sub) {
   const key = k(m,it);
@@ -903,7 +937,7 @@ function render() {
     const done = m.items.filter(it => st(k(m,it))===1);
     if (open.length) {
       const it = open[0], key = k(m,it);
-      h += `<div class="now">
+      h += `<div class="now" id="nextitem">
         <div class="mhead"><span class="kbadge">Kiste ${state.tab+1}</span><span class="mname">${esc(m.label)}</span></div>
         <div class="lbl">JETZT PACKEN</div>
         <div class="nowrow"><span class="nowsel">${selTxt(it)}</span><span class="nowqty">\u00d7 ${it.qty}</span></div>
@@ -951,15 +985,25 @@ function render() {
   }
   document.getElementById('nx').innerHTML = nh;
   save();
-  if (springTop) { window.scrollTo(0,0); springTop = false; }
-  else window.scrollTo(0, y0);
+  // Kisten-Leiste: aktiven Reiter sichtbar halten (wird je Render neu aufgebaut).
+  const tb = document.querySelector('.tabs');
+  const akt = tb && tb.querySelector('.tab.act');
+  if (tb && akt) tb.scrollLeft = Math.max(0, akt.offsetLeft - (tb.clientWidth - akt.offsetWidth) / 2);
+  if (springTop) { window.scrollTo(0,0); springTop = false; scrollZiel = null; }
+  else if (scrollZiel === 'next' && document.getElementById('nextitem')) {
+    scrollZiel = null;
+    const el = document.getElementById('nextitem');
+    const kopf = (document.querySelector('header') || {}).offsetHeight || 0;
+    window.scrollTo(0, Math.max(0, el.getBoundingClientRect().top + window.scrollY - kopf - 8));
+  }
+  else { scrollZiel = null; window.scrollTo(0, y0); }
 }
 window.go = i => { state.tab = i; ui.pickKey = null; springTop = true; render(); announce(); };
 window.mark = (key, val) => {
   const prev = st(key), prevPart = state.part[key];
   ui.pickKey = null;
   if (val === 0) { delete state.items[key]; delete state.part[key]; }
-  else { state.items[key] = val; if (val !== 3) delete state.part[key]; }
+  else { state.items[key] = val; if (val !== 3) delete state.part[key]; scrollZiel = 'next'; }
   state.hist.push({key, prev, prevPart});
   if (state.hist.length > 200) state.hist.shift();
   render();
@@ -970,6 +1014,7 @@ window.markPart = (key, n) => {
   const prev = st(key), prevPart = state.part[key];
   ui.pickKey = null;
   state.items[key] = 3; state.part[key] = n;
+  scrollZiel = 'next';
   state.hist.push({key, prev, prevPart});
   if (state.hist.length > 200) state.hist.shift();
   render();
@@ -988,7 +1033,9 @@ window.undo = () => {
   if (a.prevPart == null) delete state.part[a.key]; else state.part[a.key] = a.prevPart;
   render();
   if (navigator.vibrate) navigator.vibrate(15);
-  announce('Zur\u00fcckgenommen. ');
+  // "Ruecknahme" statt "Zurueckgenommen": das Echo der eigenen Ansage darf nicht
+  // das Sprachkommando /zurueck/ ausloesen (Codex-Einwand Runde 7).
+  announce('R\u00fccknahme. ');
 };
 window.reportFehlt = async () => {
   const ml = missList();
@@ -1008,7 +1055,7 @@ window.reportFehlt = async () => {
 };
 
 let voiceOn = !!state.voiceOn, micOn = false, recog = null, speaking = false;
-let recLive = false, sprachEnde = 0;
+let recLive = false, sprachEnde = 0, uGen = 0;
 const synth = window.speechSynthesis;
 // iOS spricht beim gleichen rate-Wert schneller als Android -> geraeteabhaengiges Tempo (Nutzerfeedback 2026-07-13)
 const IOS = /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
@@ -1022,7 +1069,9 @@ function speak(txt) {
     synth.cancel();
     const u = new SpeechSynthesisUtterance(txt);
     u.lang = 'de-DE'; u.rate = RATE;
-    u.onend = u.onerror = () => { speaking = false; sprachEnde = Date.now(); if (micOn && !recLive) startRecog(); };
+    // Generationszaehler: Callbacks verworfener Ansagen heben die Echo-Sperre nicht vorzeitig auf.
+    const g = ++uGen;
+    u.onend = u.onerror = () => { if (g !== uGen) return; speaking = false; sprachEnde = Date.now(); if (micOn && !recLive) startRecog(); };
     synth.speak(u);
   } catch(e) { speaking = false; }
 }
@@ -1050,15 +1099,20 @@ function startRecog() {
       document.getElementById('heard').textContent = '\u201e' + t + '\u201c';
       handleVoice(t);
     };
-    recog.onend = () => { recLive = false; if (micOn && !speaking) { try { recog.start(); } catch(e){} } };
+    recog.onend = () => { recLive = false; if (micOn && !speaking) { try { recog.start(); recLive = true; } catch(e){} } };
     recog.onerror = e => {
+      recLive = false;
       if (e.error === 'not-allowed' || e.error === 'service-not-allowed') {
-        micOn = false; recLive = false; updVB();
+        micOn = false; updVB();
         document.getElementById('heard').textContent = 'Mikrofon nicht erlaubt';
       }
     };
     recog.start();
-  } catch(e){}
+    recLive = true;
+  } catch(e) {
+    recLive = false; micOn = false; updVB();
+    document.getElementById('heard').textContent = 'Mikro-Start fehlgeschlagen \u2013 \ud83c\udfa4 erneut antippen';
+  }
 }
 function handleVoice(t) {
   if (state.tab === FEHLT) { if (/zur\u00fcck/.test(t)) undo(); return; }
