@@ -304,21 +304,23 @@ function flowApp(DATA) {
     const mi = M_BY_DEV[dev]; if (mi == null) return;
     const m = DATA.machines[mi];
     const add = (nr, o) => STEPS.push(Object.assign({id: 'a' + dev + '_' + nr, nr, t: titel(nr), sub: m.label, dev, mi}, o || {}));
-    // In Kioskläden (gebuendelt) laufen 5/6/7 als EIN Schritt fuer alle Automaten des Ladens
-    // (siehe Standort-Aufbau) - hier entfallen sie dann je Automat.
+    // In Laeden mit mehreren Automaten (gebuendelt) laufen ALLE Punkte ausser dem Befuellen
+    // als EIN Schritt fuer den ganzen Laden (siehe Standort-Aufbau) - hier bleibt dann nur Nr. 10.
     if (!gebuendelt) {
       add(5, {soll: sollMin(5, 1)});
       add(6, {soll: sollMin(6, 1)});
       add(7, {soll: sollMin(7, 1)});
+      // Bedarfs-Schritte: Sollzeit gilt JE EREIGNIS (ev:1) und zaehlt nicht je Automat in die
+      // Gesamt-Sollzeit; dort gehen stattdessen die Mengen-Annahmen der Tour ein (s. sollGesMin).
+      add(8, {skip: 1, ev: 1, soll: sollMin(8, 1)});
+      add(9, {skip: 1, ev: 1, soll: sollMin(9, 1)});
     }
-    // Bedarfs-Schritte: Sollzeit gilt JE EREIGNIS (ev:1) und zaehlt nicht je Automat in die
-    // Gesamt-Sollzeit; dort gehen stattdessen die Mengen-Annahmen der Tour ein (s. sollGesMin).
-    add(8, {skip: 1, ev: 1, soll: sollMin(8, 1)});
-    add(9, {skip: 1, ev: 1, soll: sollMin(9, 1)});
     add(10, {mode: 'fill', soll: sollMin(10, stkVon(m))});
-    add(11, {soll: sollMin(11, 1)});
-    add(12, {soll: sollMin(12, 1)});
-    add(14, {soll: sollMin(14, 1)});
+    if (!gebuendelt) {
+      add(11, {soll: sollMin(11, 1)});
+      add(12, {soll: sollMin(12, 1)});
+      add(14, {soll: sollMin(14, 1)});
+    }
   };
   STEPS.push({id: 't1', nr: 1, t: titel(1), sub: 'Alle Kisten dieser Tour', mode: 'pack', soll: sollMin(1, stkGes)});
   if ((P.todos || 0) > 0) STEPS.push({id: 't2', nr: 2, t: titel(2), sub: 'Nur bei Bedarf', skip: 1, soll: sollMin(2, P.todos)});
@@ -331,18 +333,22 @@ function flowApp(DATA) {
     const devs = (st.devs || []).filter(d => M_BY_DEV[d] != null);
     if (!devs.length) return;
     fahrtN++; STEPS.push({id: 'f' + fahrtN, nr: 4, t: titel(4), sub: '\u2192 ' + st.name, fahrt: 1});
-    // Kioskladen mit mehreren Automaten: 5/6/7 in einem Rutsch fuer ALLE Automaten des
-    // Ladens (einmal alle oeffnen, Geld entnehmen, Fehlerprotokolle pruefen), danach die
-    // Automaten einzeln in Reihenfolge. Soll = Anzahl Automaten x Einzel-Soll.
+    // Laden mit mehreren Automaten: alle Punkte ausser dem Befuellen in einem Rutsch fuer
+    // ALLE Automaten - vorab 5/6/7 (+ Bedarfs-Schritte 8/9), dann je Automat NUR das
+    // Befuellen in Reihenfolge, danach gebuendelt 11/12/14. Soll = Anzahl x Einzel-Soll.
     const buendel = st.kiosk && devs.length > 1;
+    const gsub = st.name + ' \u00b7 alle ' + devs.length + ' Automaten';
+    const gpush = (nr, o) => STEPS.push(Object.assign({
+      id: 's' + si + '_' + nr + 'g', nr, t: titel(nr), sub: gsub, ort: 1
+    }, o));
     if (buendel) {
-      [5, 6, 7].forEach(nr => STEPS.push({
-        id: 's' + si + '_' + nr + 'g', nr, t: titel(nr),
-        sub: st.name + ' \u00b7 alle ' + devs.length + ' Automaten', ort: 1,
-        soll: sollMin(nr, devs.length)
-      }));
+      [5, 6, 7].forEach(nr => gpush(nr, {soll: sollMin(nr, devs.length)}));
+      [8, 9].forEach(nr => gpush(nr, {skip: 1, ev: 1, soll: sollMin(nr, 1)}));
     }
     devs.forEach(dev => { seen[dev] = 1; autoBlock(dev, buendel); });
+    if (buendel) {
+      [11, 12, 14].forEach(nr => gpush(nr, {soll: sollMin(nr, devs.length)}));
+    }
     // st.ohne: Nummern der Punkte, die an diesem Standort entfallen (aus den Tour-Daten).
     const ohne = st.ohne || [];
     if (ohne.indexOf(13) < 0) STEPS.push({id: 's' + si + '_13', nr: 13, t: titel(13), sub: st.name, soll: sollMin(13, 1)});
@@ -367,22 +373,25 @@ function flowApp(DATA) {
   // Schritt-ID nicht mehr existieren -> Timer sauber loslassen, Auto-Start unten greift.
   const STEP_IDS = {}; STEPS.forEach(s => { STEP_IDS[s.id] = 1; });
   // Migration alter Tagesstaende: An gebuendelten Laden-Standorten wandern Zeit und Status
-  // frueherer Einzel-Schritte 5/6/7 (a<dev>_<nr>) in den jeweiligen Buendel-Schritt.
+  // fruehrer Einzel-Schritte (a<dev>_<nr>) in den jeweiligen Buendel-Schritt.
   (P.standorte || []).forEach((st, si) => {
-    [5, 6, 7].forEach(nr => {
+    [5, 6, 7, 8, 9, 11, 12, 14].forEach(nr => {
       const gid = 's' + si + '_' + nr + 'g';
       if (!STEP_IDS[gid]) return;
       const alt = (st.devs || []).map(d => 'a' + d + '_' + nr);
       const hatStatus = alt.some(id => state.done[id] || state.skipd[id] || state.zeit[id]);
       if (!hatStatus) return;
       const alleErledigt = alt.every(id => state.done[id] || state.skipd[id]);
+      const alleUebersprungen = alt.every(id => state.skipd[id]);
       let zeitSum = 0;
       alt.forEach(id => {
         if (state.zeit[id]) { zeitSum += state.zeit[id]; }
         delete state.zeit[id]; delete state.done[id]; delete state.skipd[id];
       });
       if (zeitSum) state.zeit[gid] = (state.zeit[gid] || 0) + zeitSum;
-      if (alleErledigt && !state.done[gid] && !state.skipd[gid]) state.done[gid] = 1;
+      if (alleErledigt && !state.done[gid] && !state.skipd[gid]) {
+        if (alleUebersprungen) state.skipd[gid] = 1; else state.done[gid] = 1;
+      }
     });
   });
   let aktivVerwaist = false;
