@@ -345,7 +345,15 @@ function flowApp(DATA) {
       [5, 6, 7].forEach(nr => gpush(nr, {soll: sollMin(nr, devs.length)}));
       [8, 9].forEach(nr => gpush(nr, {skip: 1, ev: 1, soll: sollMin(nr, 1)}));
     }
-    devs.forEach(dev => { seen[dev] = 1; autoBlock(dev, buendel); });
+    devs.forEach((dev, di) => {
+      // st.zf: gleiche Adresse, aber getrennte Positionen -> eigener Fahrt-Schritt
+      // zwischen den Automaten (zaehlt ins Fahrzeit-Budget der Tour).
+      if (st.zf && di > 0) {
+        const mZiel = DATA.machines[M_BY_DEV[dev]];
+        fahrtN++; STEPS.push({id: 'f' + fahrtN, nr: 4, t: titel(4), sub: '\u2192 ' + (mZiel ? mZiel.label : st.name), fahrt: 1});
+      }
+      seen[dev] = 1; autoBlock(dev, buendel);
+    });
     if (buendel) {
       [11, 12, 14].forEach(nr => gpush(nr, {soll: sollMin(nr, devs.length)}));
     }
