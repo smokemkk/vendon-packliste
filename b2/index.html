@@ -333,10 +333,12 @@ function flowApp(DATA) {
     const devs = (st.devs || []).filter(d => M_BY_DEV[d] != null);
     if (!devs.length) return;
     fahrtN++; STEPS.push({id: 'f' + fahrtN, nr: 4, t: titel(4), sub: '\u2192 ' + st.name, fahrt: 1});
-    // Laden mit mehreren Automaten: alle Punkte ausser dem Befuellen in einem Rutsch fuer
+    // Standort mit mehreren Automaten: alle Punkte ausser dem Befuellen in einem Rutsch fuer
     // ALLE Automaten - vorab 5/6/7 (+ Bedarfs-Schritte 8/9), dann je Automat NUR das
     // Befuellen in Reihenfolge, danach gebuendelt 11/12/14. Soll = Anzahl x Einzel-Soll.
-    const buendel = st.kiosk && devs.length > 1;
+    // Ausnahme: Standorte mit Zwischenfahrt (zf) - dort liegen die Automaten raeumlich
+    // getrennt, ein gemeinsames Oeffnen/Abschliessen ist nicht moeglich.
+    const buendel = devs.length > 1 && !st.zf;
     const gsub = st.name + ' \u00b7 alle ' + devs.length + ' Automaten';
     const gpush = (nr, o) => STEPS.push(Object.assign({
       id: 's' + si + '_' + nr + 'g', nr, t: titel(nr), sub: gsub, ort: 1
