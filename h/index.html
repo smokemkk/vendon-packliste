@@ -200,7 +200,11 @@ const LS=(()=>{try{localStorage.setItem('__t','1');localStorage.removeItem('__t'
   if (!ios) return;
   let letzter = 0, lx = 0, ly = 0, x0 = 0, y0 = 0, bewegt = false, sperreBis = 0;
   document.addEventListener('click', e => {
-    if (e.isTrusted && Date.now() < sperreBis) { e.preventDefault(); e.stopPropagation(); }
+    // Nur EIN nachgelieferter Klick an der Stelle des abgefangenen Tipps wird verworfen;
+    // Klicks an anderer Stelle bleiben unberuehrt.
+    if (e.isTrusted && Date.now() < sperreBis && Math.abs(e.clientX - lx) < 45 && Math.abs(e.clientY - ly) < 45) {
+      sperreBis = 0; e.preventDefault(); e.stopPropagation();
+    }
   }, true);
   document.addEventListener('touchstart', e => {
     if (e.touches.length === 1) { x0 = e.touches[0].clientX; y0 = e.touches[0].clientY; bewegt = false; }
@@ -869,6 +873,10 @@ function flowApp(DATA) {
   // sobald die Position bearbeitet ist - egal ob gepackt, Teilmenge oder als fehlend
   // gemeldet -, damit ehrliches Melden keine Punkte kostet.
   const PKT = {soll: 10, puffer: 5, fahrt: 20, schritt: 2, tour: 50, meld: 25};
+  // Stand, zu dem gemeldet wurde: aendert sich danach etwas (andere Fehlmengen, weitere
+  // Schritte), gilt die Meldung nicht mehr als aktuell und muss erneut gesendet werden.
+  const fehltSig = () => missList().map(e => k(e.m, e.it) + ':' + e.miss).join('|');
+  const zeitSig = () => 'n' + STEPS.filter(s => state.done[s.id] || state.skipd[s.id]).length;
   function punkte() {
     const pflicht = STEPS.filter(s => !s.skip);
     const zeitS = pflicht.filter(s => !s.fahrt && s.soll > 0);
@@ -893,9 +901,10 @@ function flowApp(DATA) {
     const tourFertig = naechsterOffen(0) < 0;
     rows.push({t: 'Tour komplett', sub: tourFertig ? 'geschafft' : 'noch offen', p: tourFertig ? PKT.tour : 0, max: PKT.tour});
     const fehltN = missList().length;
-    const fehltOk = fehltN ? state.meld.fehlt === fehltN : tourFertig;
-    rows.push({t: 'Fehlt-Liste gemeldet', sub: fehltN ? (fehltOk ? 'gesendet' : 'noch senden (' + fehltN + ')') : (tourFertig ? 'nichts fehlt' : 'z\u00e4hlt am Tour-Ende'), p: fehltOk ? PKT.meld : 0, max: PKT.meld});
-    rows.push({t: 'Zeit-Protokoll gesendet', sub: state.meld.zeit ? 'gesendet' : 'noch senden', p: state.meld.zeit ? PKT.meld : 0, max: PKT.meld});
+    const fehltOk = fehltN ? state.meld.fehlt === fehltSig() : tourFertig;
+    rows.push({t: 'Fehlt-Liste gemeldet', sub: fehltN ? (fehltOk ? 'gesendet' : (state.meld.fehlt ? 'ge\u00e4ndert \u2013 erneut senden (' : 'noch senden (') + fehltN + ')') : (tourFertig ? 'nichts fehlt' : 'z\u00e4hlt am Tour-Ende'), p: fehltOk ? PKT.meld : 0, max: PKT.meld});
+    const zeitOk = !!state.meld.zeit && state.meld.zeit === zeitSig();
+    rows.push({t: 'Zeit-Protokoll gesendet', sub: zeitOk ? 'gesendet' : (state.meld.zeit ? 'Stand ge\u00e4ndert \u2013 erneut senden' : 'noch senden'), p: zeitOk ? PKT.meld : 0, max: PKT.meld});
     return {rows, sum: rows.reduce((a, r) => a + r.p, 0), max: rows.reduce((a, r) => a + r.max, 0)};
   }
   function punkteAnsicht() {
@@ -904,7 +913,7 @@ function flowApp(DATA) {
     for (const r of pt.rows)
       h += `<div class="srow pkt"><span class="snm">${esc(r.t)}<small>${esc(r.sub || '')}</small></span><span class="z3 ${r.max > 0 && r.p >= r.max ? 'istok' : ''}">${r.p} / ${r.max}</span></div>`;
     h += '</div>';
-    h += `<div class="hint">Je Schritt im Soll ${PKT.soll} Punkte, im Puffer ${PKT.puffer}. Fahrzeit im Budget ${PKT.fahrt}. Je bearbeitetem St\u00fcck 1 Punkt \u2013 auch wenn etwas fehlt und gemeldet wird. Je erledigtem Schritt ${PKT.schritt}, Tour komplett ${PKT.tour}, Fehlt-Liste und Zeit-Protokoll je ${PKT.meld}. \u00dcberspringbare Schritte z\u00e4hlen nicht.</div>`;
+    h += `<div class="hint">Die Punkte sind eine Spielwertung zur Selbstkontrolle. Je Schritt im Soll ${PKT.soll} Punkte, im Puffer ${PKT.puffer}. Fahrzeit im Budget ${PKT.fahrt}. Je bearbeitetem St\u00fcck 1 Punkt \u2013 auch wenn etwas fehlt und gemeldet wird. Je erledigtem Schritt ${PKT.schritt}, Tour komplett ${PKT.tour}, Fehlt-Liste und Zeit-Protokoll je ${PKT.meld}. \u00dcberspringbare Schritte z\u00e4hlen nicht.</div>`;
     return h;
   }
 
@@ -1080,7 +1089,8 @@ function flowApp(DATA) {
       txt += '- Anwahl ' + e.it.sel.join('+') + ' \u00b7 ' + e.miss + '\u00d7 ' + e.it.name + ' \u00b7 ' + e.it.art + ' \u00b7 [id ' + e.it.id + ']\n';
     }
     txt += '\nGesamt: ' + ml.length + ' Position(en) mit Fehlmenge \u2013 bitte Bestand korrigieren.';
-    if (await teile('Fehlt-Meldung Packliste ' + DATA.tour, txt)) { state.meld.fehlt = ml.length; save(); render(); }
+    const sig = fehltSig();
+    if (await teile('Fehlt-Meldung Packliste ' + DATA.tour, txt)) { state.meld.fehlt = sig; save(); render(); }
   };
   window.reportZeit = async () => {
     let txt = 'ZEIT-PROTOKOLL Lagerliste ' + DATA.tour + ' ' + DATA.datum + '\n';
@@ -1097,14 +1107,16 @@ function flowApp(DATA) {
     txt += 'Fahrzeit gesamt: Ist ' + fmtM(fahrtIst() / 60) + ' min \u00b7 Soll ' + fmtM(P.fahrzeit || 0) + ' min\n';
     txt += 'Pausen gesamt: ' + fmtM(pauseIst() / 60) + ' min (nicht in den Schritt-Zeiten enthalten)\n';
     txt += 'GESAMT: Ist ' + fmtM(istGes() / 60) + ' min \u00b7 Soll ' + fmtM(sollGesMin) + ' min\n';
-    if (await teile('Zeit-Protokoll Lagerliste ' + DATA.tour, txt)) { state.meld.zeit = 1; save(); render(); }
+    const stand = zeitSig();
+    if (await teile('Zeit-Protokoll Lagerliste ' + DATA.tour, txt)) { state.meld.zeit = stand; save(); render(); }
   };
   // Rueckgabe true = geteilt bzw. in die Zwischenablage kopiert; false = abgebrochen/nicht moeglich.
   async function teile(titel, txt) {
     try { await navigator.share({title: titel, text: txt}); return true; }
     catch(e) {
-      const abbruch = !!e && e.name === 'AbortError';
-      try { await navigator.clipboard.writeText(txt); document.getElementById('heard').textContent = 'Meldung kopiert \u2013 in Chat/Mail einf\u00fcgen'; return !abbruch; }
+      // Bewusst abgebrochenes Teilen-Menue: nichts kopieren, nichts werten.
+      if (e && e.name === 'AbortError') return false;
+      try { await navigator.clipboard.writeText(txt); document.getElementById('heard').textContent = 'Meldung kopiert \u2013 in Chat/Mail einf\u00fcgen'; return true; }
       catch(e2) { document.getElementById('heard').textContent = 'Teilen nicht m\u00f6glich \u2013 bitte Screenshot senden'; return false; }
     }
   }
