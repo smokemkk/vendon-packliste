@@ -144,13 +144,13 @@ h3.warn { color:var(--warn); }
 .navtab.pkt.act { background:#ffd54a; color:#3a2a00; }
 .navtab.pkt.neu { animation:pktbump .5s ease-out; }
 @keyframes pktbump { 0%{ transform:scale(1); } 40%{ transform:scale(1.25); } 100%{ transform:scale(1); } }
-/* Punktgewinn: ploppt gross mitten auf dem Bildschirm auf und verschwindet von selbst. */
-#pktpop { position:fixed; left:50%; top:38%; z-index:50; pointer-events:none; text-align:center; padding:14px 26px; border-radius:22px; background:#2b2205f2; border:3px solid #ffd54a; color:#ffd54a; font-size:54px; font-weight:900; line-height:1; white-space:nowrap; box-shadow:0 8px 30px #000c; transform:translate(-50%,-50%); animation:pktpop 1.3s ease-out forwards; }
-#pktpop small { display:block; margin-top:8px; font-size:16px; font-weight:700; color:#fff3c4; }
-@keyframes pktpop { 0%{ opacity:0; transform:translate(-50%,-50%) scale(.4); } 15%{ opacity:1; transform:translate(-50%,-50%) scale(1.15); } 30%{ transform:translate(-50%,-50%) scale(1); } 75%{ opacity:1; transform:translate(-50%,-60%) scale(1); } 100%{ opacity:0; transform:translate(-50%,-95%) scale(.9); } }
-#pktpop.gross { font-size:70px; border-width:4px; box-shadow:0 0 0 6px #ffd54a33, 0 8px 40px #000c; }
-.pktteil { position:fixed; left:50%; top:38%; z-index:49; pointer-events:none; font-size:24px; line-height:1; animation:pktflug 1.1s ease-out forwards; }
-@keyframes pktflug { 0%{ opacity:1; transform:translate(-50%,-50%) scale(.5); } 70%{ opacity:1; } 100%{ opacity:0; transform:translate(calc(-50% + var(--dx)), calc(-50% + var(--dy))) scale(1.3) rotate(var(--rot)); } }
+/* Punktgewinn: ploppt klein in der Ecke unten rechts (ueber der Fussleiste) auf und verschwindet von selbst. */
+#pktpop { position:fixed; right:10px; bottom:92px; z-index:50; pointer-events:none; text-align:center; padding:8px 14px; border-radius:14px; background:#2b2205f2; border:2px solid #ffd54a; color:#ffd54a; font-size:26px; font-weight:900; line-height:1; white-space:nowrap; box-shadow:0 4px 16px #000c; transform-origin:right bottom; animation:pktpop 1.3s ease-out forwards; }
+#pktpop small { display:block; margin-top:4px; font-size:11px; font-weight:700; color:#fff3c4; }
+@keyframes pktpop { 0%{ opacity:0; transform:scale(.4); } 15%{ opacity:1; transform:scale(1.15); } 30%{ transform:scale(1); } 75%{ opacity:1; transform:translateY(-6px) scale(1); } 100%{ opacity:0; transform:translateY(-22px) scale(.9); } }
+#pktpop.gross { font-size:32px; box-shadow:0 0 0 4px #ffd54a33, 0 4px 18px #000c; }
+.pktteil { position:fixed; right:48px; bottom:112px; z-index:49; pointer-events:none; font-size:15px; line-height:1; animation:pktflug 1.1s ease-out forwards; }
+@keyframes pktflug { 0%{ opacity:1; transform:scale(.5); } 70%{ opacity:1; } 100%{ opacity:0; transform:translate(var(--dx), var(--dy)) scale(1.2) rotate(var(--rot)); } }
 @media (prefers-reduced-motion: reduce) { #pktpop { animation:pktfade 1.3s linear forwards; } .navtab.pkt.neu { animation:none; } .pktteil { display:none; } }
 @keyframes pktfade { 0%,80%{ opacity:1; } 100%{ opacity:0; } }
 .pktmax { font-size:13px; font-weight:600; color:var(--dim); margin-top:4px; }
@@ -936,15 +936,15 @@ function flowApp(DATA) {
     document.body.appendChild(el);
     setTimeout(() => { if (el.parentNode) el.remove(); }, 1600);
     // Sternen-Regen ab einem groesseren Gewinn (Schritt geschafft), gross am Tour-Ende.
-    const n = riesig ? 30 : gross ? 14 : 0;
+    const n = riesig ? 18 : gross ? 9 : 0;
     const zeichen = ['\u2605', '\u2728', '\u2b50', '\ud83c\udf89'];
     for (let i = 0; i < n; i++) {
       const p = document.createElement('span');
       p.className = 'pktteil';
       p.textContent = zeichen[i % zeichen.length];
-      const w = 2 * Math.PI * i / n + Math.random() * 0.5, d = (riesig ? 150 : 100) + Math.random() * 120;
+      const w = 2 * Math.PI * i / n + Math.random() * 0.5, d = (riesig ? 70 : 45) + Math.random() * 50;
       p.style.setProperty('--dx', Math.round(Math.cos(w) * d) + 'px');
-      p.style.setProperty('--dy', Math.round(Math.sin(w) * d - 40) + 'px');
+      p.style.setProperty('--dy', Math.round(Math.sin(w) * d - 20) + 'px');
       p.style.setProperty('--rot', Math.round(Math.random() * 360 - 180) + 'deg');
       p.style.color = '#ffd54a';
       p.addEventListener('animationend', () => p.remove());
