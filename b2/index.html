@@ -6,7 +6,9 @@
 <title>OMS Lagerliste</title>
 <style>
 :root { --bg:#101418; --card:#1b222b; --fg:#f2f5f8; --dim:#8fa0b0; --acc:#33b5ff; --ok:#2ecc71; --warn:#f5a623; --line:#2a3542; --old:#ff3b30; --oldbg:#4d1210; }
-* { box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+/* touch-action:manipulation schaltet das Doppeltipp-Zoomen ab (schnelles Tippen
+   hintereinander); Scrollen und Zwei-Finger-Zoom bleiben moeglich. */
+* { box-sizing:border-box; -webkit-tap-highlight-color:transparent; touch-action:manipulation; }
 html,body { margin:0; background:var(--bg); color:var(--fg); font-family:system-ui,-apple-system,'Segoe UI',Roboto,sans-serif; }
 body { padding-bottom:132px; }
 header { position:sticky; top:0; z-index:5; background:var(--bg); padding:8px 10px 6px; border-bottom:1px solid var(--line); }
@@ -150,6 +152,14 @@ h3.warn { color:var(--warn); }
 .fertigbtn { flex:1; padding:15px 8px; font-size:19px; font-weight:800; border:0; border-radius:12px; background:var(--ok); color:#03210f; }
 .fertigbtn:disabled { opacity:.45; }
 .fillhint { margin:10px 2px 2px; font-size:13px; color:var(--dim); line-height:1.45; }
+/* Aktueller Schritt: bleibt im festen Kopf immer sichtbar (auch beim Scrollen und in anderen Ansichten). */
+#curstep:empty { display:none; }
+.csrow { display:flex; align-items:center; gap:8px; margin-top:4px; padding:6px 8px; background:#12202e; border-left:3px solid var(--acc); border-radius:8px; font-size:13px; color:var(--dim); }
+.csnr { flex:0 0 auto; background:var(--acc); color:#04283d; font-size:12px; font-weight:800; padding:2px 7px; border-radius:7px; font-variant-numeric:tabular-nums; }
+.cstxt { flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.cstxt b { color:var(--fg); }
+.cstmr { flex:0 0 auto; font-size:15px; font-weight:800; font-variant-numeric:tabular-nums; color:var(--ok); }
+.cstmr.w { color:var(--warn); } .cstmr.o { color:var(--old); }
 </style>
 </head>
 <body>
@@ -162,6 +172,7 @@ h3.warn { color:var(--warn); }
   <div id="agebar" role="alert"></div>
   <div class="tourrow"><span class="prog" id="zeitges"></span><span class="prog" id="prog"></span></div>
   <div id="navzone"></div>
+  <div id="curstep"></div>
   <div class="bar"><div id="bar"></div></div>
 </header>
 <div id="main"></div>
@@ -778,6 +789,16 @@ function flowApp(DATA) {
     document.getElementById('zeitges').innerHTML = `${state.pausiert ? '\u23f8 ' : '\u23f1 '}<b>${fmtM(istGes() / 60)}</b> / ${fmtM(sollGesMin)} min`;
     const doneN = STEPS.filter(s => state.done[s.id] || state.skipd[s.id]).length;
     document.getElementById('bar').style.width = (doneN / STEPS.length * 100) + '%';
+    // Aktueller Schritt im festen Kopf: bleibt sichtbar, auch wenn die Schritt-Karte
+    // weggescrollt ist oder eine andere Ansicht offen ist. Antippen fuehrt zum Ablauf.
+    const cs = document.getElementById('curstep');
+    if (cs) {
+      if (naechsterOffen(0) < 0) cs.innerHTML = '';
+      else {
+        const a = STEPS[state.step];
+        cs.innerHTML = `<div class="csrow" onclick="zeigeView(0)"><span class="csnr">Nr ${a.nr}</span><span class="cstxt"><b>${esc(a.t)}</b>${a.sub ? ' \u00b7 ' + esc(a.sub) : ''}</span><span class="${tmrKlasse(a).replace('tmr', 'cstmr')}" id="cstmr">${state.pausiert ? '\u23f8 ' : ''}${fmtClock(ist(a.id))}</span></div>`;
+      }
+    }
 
     let h = '';
     if (state.view === 1) {
@@ -840,8 +861,10 @@ function flowApp(DATA) {
   // Sekunden-Tick: nur Timer-Anzeigen aktualisieren (kein Voll-Render), alle 10 s speichern.
   let tickN = 0;
   setInterval(() => {
-    if (state.view !== 0) return;
     const s = STEPS[state.step];
+    const ce = document.getElementById('cstmr');
+    if (ce && state.aktiv === s.id) { ce.textContent = fmtClock(ist(s.id)); ce.className = tmrKlasse(s).replace('tmr', 'cstmr'); }
+    if (state.view !== 0) return;
     const el = document.getElementById('tmr');
     if (el && state.aktiv === s.id) { el.textContent = fmtClock(ist(s.id)); el.className = tmrKlasse(s); }
     const zg = document.getElementById('zeitges');
