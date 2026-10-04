@@ -140,6 +140,19 @@ h3.warn { color:var(--warn); }
 .sgroup { margin:14px 12px 2px; font-size:13px; font-weight:800; color:var(--acc); letter-spacing:.4px; }
 .navtabs { display:flex; gap:6px; padding:8px 0 4px; }
 .navtab { flex:1; text-align:center; padding:9px 4px; border-radius:12px; background:var(--card); color:var(--dim); font-size:13px; font-weight:700; border:1px solid var(--line); white-space:nowrap; }
+.navtab.pkt { color:#ffd54a; border-color:#ffd54a; font-size:15px; font-weight:800; }
+.navtab.pkt.act { background:#ffd54a; color:#3a2a00; }
+.navtab.pkt.neu { animation:pktbump .5s ease-out; }
+@keyframes pktbump { 0%{ transform:scale(1); } 40%{ transform:scale(1.25); } 100%{ transform:scale(1); } }
+/* Punktgewinn: ploppt gross mitten auf dem Bildschirm auf und verschwindet von selbst. */
+#pktpop { position:fixed; left:50%; top:38%; z-index:50; pointer-events:none; text-align:center; padding:14px 26px; border-radius:22px; background:#2b2205f2; border:3px solid #ffd54a; color:#ffd54a; font-size:54px; font-weight:900; line-height:1; white-space:nowrap; box-shadow:0 8px 30px #000c; transform:translate(-50%,-50%); animation:pktpop 1.3s ease-out forwards; }
+#pktpop small { display:block; margin-top:8px; font-size:16px; font-weight:700; color:#fff3c4; }
+@keyframes pktpop { 0%{ opacity:0; transform:translate(-50%,-50%) scale(.4); } 15%{ opacity:1; transform:translate(-50%,-50%) scale(1.15); } 30%{ transform:translate(-50%,-50%) scale(1); } 75%{ opacity:1; transform:translate(-50%,-60%) scale(1); } 100%{ opacity:0; transform:translate(-50%,-95%) scale(.9); } }
+#pktpop.gross { font-size:70px; border-width:4px; box-shadow:0 0 0 6px #ffd54a33, 0 8px 40px #000c; }
+.pktteil { position:fixed; left:50%; top:38%; z-index:49; pointer-events:none; font-size:24px; line-height:1; animation:pktflug 1.1s ease-out forwards; }
+@keyframes pktflug { 0%{ opacity:1; transform:translate(-50%,-50%) scale(.5); } 70%{ opacity:1; } 100%{ opacity:0; transform:translate(calc(-50% + var(--dx)), calc(-50% + var(--dy))) scale(1.3) rotate(var(--rot)); } }
+@media (prefers-reduced-motion: reduce) { #pktpop { animation:pktfade 1.3s linear forwards; } .navtab.pkt.neu { animation:none; } .pktteil { display:none; } }
+@keyframes pktfade { 0%,80%{ opacity:1; } 100%{ opacity:0; } }
 .pktmax { font-size:13px; font-weight:600; color:var(--dim); margin-top:4px; }
 .srow.pkt { color:var(--fg); } .srow.pkt .z3 { min-width:84px; font-size:14px; font-weight:800; }
 .navtab.act { background:var(--acc); color:#04283d; border-color:var(--acc); }
@@ -895,13 +908,76 @@ function flowApp(DATA) {
     return h;
   }
 
+  // Punktgewinn sofort sichtbar machen: "+N" ploppt auf, der Reiter huepft kurz.
+  // Beim Laden (pktAlt === null) und bei Ruecknahmen erscheint nichts.
+  let pktAlt = null;
+  function pktPop(plus, summe) {
+    const alt = document.getElementById('pktpop');
+    if (alt) alt.remove();
+    document.querySelectorAll('.pktteil').forEach(x => x.remove());
+    const gross = plus >= 10, riesig = plus >= 50;
+    const el = document.createElement('div');
+    el.id = 'pktpop';
+    if (gross) el.className = 'gross';
+    el.textContent = (riesig ? '\ud83c\udf89 ' : '') + '+' + plus + ' \u2605';
+    const sm = document.createElement('small');
+    sm.textContent = summe + ' Punkte';
+    el.appendChild(sm);
+    el.addEventListener('animationend', () => el.remove());
+    document.body.appendChild(el);
+    setTimeout(() => { if (el.parentNode) el.remove(); }, 1600);
+    // Sternen-Regen ab einem groesseren Gewinn (Schritt geschafft), gross am Tour-Ende.
+    const n = riesig ? 30 : gross ? 14 : 0;
+    const zeichen = ['\u2605', '\u2728', '\u2b50', '\ud83c\udf89'];
+    for (let i = 0; i < n; i++) {
+      const p = document.createElement('span');
+      p.className = 'pktteil';
+      p.textContent = zeichen[i % zeichen.length];
+      const w = 2 * Math.PI * i / n + Math.random() * 0.5, d = (riesig ? 150 : 100) + Math.random() * 120;
+      p.style.setProperty('--dx', Math.round(Math.cos(w) * d) + 'px');
+      p.style.setProperty('--dy', Math.round(Math.sin(w) * d - 40) + 'px');
+      p.style.setProperty('--rot', Math.round(Math.random() * 360 - 180) + 'deg');
+      p.style.color = '#ffd54a';
+      p.addEventListener('animationend', () => p.remove());
+      document.body.appendChild(p);
+      setTimeout(() => { if (p.parentNode) p.remove(); }, 1500);
+    }
+    pktTon(gross, riesig);
+  }
+  // Kurzer Belohnungston - nur wenn die Sprachausgabe (Lautsprecher) eingeschaltet ist.
+  let tonCtx = null;
+  function pktTon(gross, riesig) {
+    if (!voiceOn) return;
+    try {
+      const AC = window.AudioContext || window.webkitAudioContext;
+      if (!AC) return;
+      tonCtx = tonCtx || new AC();
+      if (tonCtx.state === 'suspended') tonCtx.resume();
+      const t0 = tonCtx.currentTime;
+      const noten = riesig ? [523, 659, 784, 1047, 1319] : gross ? [659, 880, 1319] : [988, 1319];
+      noten.forEach((f, i) => {
+        const o = tonCtx.createOscillator(), g = tonCtx.createGain(), t = t0 + i * 0.085;
+        o.type = 'triangle'; o.frequency.value = f;
+        g.gain.setValueAtTime(0.0001, t);
+        g.gain.exponentialRampToValueAtTime(0.16, t + 0.02);
+        g.gain.exponentialRampToValueAtTime(0.0001, t + 0.24);
+        o.connect(g); g.connect(tonCtx.destination);
+        o.start(t); o.stop(t + 0.26);
+      });
+    } catch(e) {}
+  }
+
   function render() {
     const y0 = window.scrollY || 0;
     const mc = missList().length;
+    const pktJetzt = punkte().sum;
+    const pktPlus = (pktAlt !== null && pktJetzt > pktAlt) ? pktJetzt - pktAlt : 0;
+    pktAlt = pktJetzt;
+    if (pktPlus) pktPop(pktPlus, pktJetzt);
     document.getElementById('navzone').innerHTML =
       `<div class="navtabs"><div class="navtab${state.view === 0 ? ' act' : ''}" onclick="zeigeView(0)">Ablauf</div>` +
       `<div class="navtab${state.view === 2 ? ' act' : ''}" onclick="zeigeView(2)">\u23f1 Zeit</div>` +
-      `<div class="navtab${state.view === 3 ? ' act' : ''}" onclick="zeigeView(3)">\u2605 ${punkte().sum}</div>` +
+      `<div class="navtab pkt${state.view === 3 ? ' act' : ''}${pktPlus ? ' neu' : ''}" onclick="zeigeView(3)">\u2605 ${pktJetzt}</div>` +
       `<div class="navtab warn${state.view === 1 ? ' act' : ''}" onclick="zeigeView(1)">\u26a0 Fehlt (${mc})</div></div>`;
     const stkGep = DATA.machines.reduce((n, m) => n + m.items.reduce((a, it) => { const s2 = st(k(m, it)); return a + (s2 === 1 ? it.qty : s2 === 3 ? Math.min(partOf(k(m, it)), it.qty) : 0); }, 0), 0);
     const stkFehlt = missList().reduce((a, e) => a + e.miss, 0);
