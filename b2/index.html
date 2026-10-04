@@ -139,7 +139,9 @@ h3.warn { color:var(--warn); }
 .srow.sk { opacity:.4; } .srow.sk .snm { text-decoration:line-through; }
 .sgroup { margin:14px 12px 2px; font-size:13px; font-weight:800; color:var(--acc); letter-spacing:.4px; }
 .navtabs { display:flex; gap:6px; padding:8px 0 4px; }
-.navtab { flex:1; text-align:center; padding:9px 8px; border-radius:12px; background:var(--card); color:var(--dim); font-size:14px; font-weight:700; border:1px solid var(--line); }
+.navtab { flex:1; text-align:center; padding:9px 4px; border-radius:12px; background:var(--card); color:var(--dim); font-size:13px; font-weight:700; border:1px solid var(--line); white-space:nowrap; }
+.pktmax { font-size:13px; font-weight:600; color:var(--dim); margin-top:4px; }
+.srow.pkt { color:var(--fg); } .srow.pkt .z3 { min-width:84px; font-size:14px; font-weight:800; }
 .navtab.act { background:var(--acc); color:#04283d; border-color:var(--acc); }
 .navtab.warn { color:var(--warn); border-color:var(--warn); }
 .navtab.warn.act { background:var(--warn); color:#3a2a00; }
@@ -351,6 +353,7 @@ function flowApp(DATA) {
   if (typeof state.step !== 'number') state.step = 0;    // Index in STEPS
   if (typeof state.view !== 'number') state.view = 0;    // 0 = Ablauf, 1 = Fehlt, 2 = Zeit
   if (typeof state.pauseSum !== 'number') state.pauseSum = 0;  // Pausen-Sekunden gesamt
+  if (!state.meld || typeof state.meld !== 'object') state.meld = {};  // gesendete Meldungen (fuer die Punkte)
   const save = () => LS.setItem(KEY, JSON.stringify(state));
 
   // ---- Schritt-Liste aufbauen ----
@@ -848,12 +851,57 @@ function flowApp(DATA) {
     return h;
   }
 
+  // ---- Punkte (Selbstkontrolle; reine Anzeige auf dem Geraet) ----
+  // Bewertet werden nur Pflicht-Schritte (ueberspringbare zaehlen nicht). Stueck zaehlen,
+  // sobald die Position bearbeitet ist - egal ob gepackt, Teilmenge oder als fehlend
+  // gemeldet -, damit ehrliches Melden keine Punkte kostet.
+  const PKT = {soll: 10, puffer: 5, fahrt: 20, schritt: 2, tour: 50, meld: 25};
+  function punkte() {
+    const pflicht = STEPS.filter(s => !s.skip);
+    const zeitS = pflicht.filter(s => !s.fahrt && s.soll > 0);
+    let zeit = 0, imSoll = 0, imPuffer = 0;
+    zeitS.forEach(s => {
+      if (!state.done[s.id]) return;
+      const m = ist(s.id) / 60;
+      if (m <= s.soll) { zeit += PKT.soll; imSoll++; }
+      else if (m <= s.soll * (1 + pufVon(s.nr))) { zeit += PKT.puffer; imPuffer++; }
+    });
+    const rows = [{t: 'Zeit im Soll', sub: imSoll + ' im Soll \u00b7 ' + imPuffer + ' im Puffer \u00b7 ' + zeitS.length + ' Schritte', p: zeit, max: zeitS.length * PKT.soll}];
+    const fahrten = STEPS.filter(s => s.fahrt);
+    if (fahrten.length && (P.fahrzeit || 0) > 0) {
+      const alle = fahrten.every(s => state.done[s.id]);
+      const ok = alle && fahrtIst() / 60 <= P.fahrzeit;
+      rows.push({t: 'Fahrzeit im Budget', sub: alle ? (fmtM(fahrtIst() / 60) + ' / ' + fmtM(P.fahrzeit) + ' min') : 'z\u00e4hlt nach der letzten Fahrt', p: ok ? PKT.fahrt : 0, max: PKT.fahrt});
+    }
+    const stk = DATA.machines.reduce((n, m) => n + m.items.reduce((a, it) => a + (st(k(m, it)) ? it.qty : 0), 0), 0);
+    rows.push({t: 'Bearbeitete St\u00fcck', sub: stk + ' von ' + stkGes, p: stk, max: stkGes});
+    const erledigt = pflicht.filter(s => state.done[s.id]).length;
+    rows.push({t: 'Erledigte Schritte', sub: erledigt + ' von ' + pflicht.length, p: erledigt * PKT.schritt, max: pflicht.length * PKT.schritt});
+    const tourFertig = naechsterOffen(0) < 0;
+    rows.push({t: 'Tour komplett', sub: tourFertig ? 'geschafft' : 'noch offen', p: tourFertig ? PKT.tour : 0, max: PKT.tour});
+    const fehltN = missList().length;
+    const fehltOk = fehltN ? state.meld.fehlt === fehltN : tourFertig;
+    rows.push({t: 'Fehlt-Liste gemeldet', sub: fehltN ? (fehltOk ? 'gesendet' : 'noch senden (' + fehltN + ')') : (tourFertig ? 'nichts fehlt' : 'z\u00e4hlt am Tour-Ende'), p: fehltOk ? PKT.meld : 0, max: PKT.meld});
+    rows.push({t: 'Zeit-Protokoll gesendet', sub: state.meld.zeit ? 'gesendet' : 'noch senden', p: state.meld.zeit ? PKT.meld : 0, max: PKT.meld});
+    return {rows, sum: rows.reduce((a, r) => a + r.p, 0), max: rows.reduce((a, r) => a + r.max, 0)};
+  }
+  function punkteAnsicht() {
+    const pt = punkte();
+    let h = `<div class="alldone">\u2605 ${pt.sum} Punkte<div class="pktmax">von ${pt.max} m\u00f6glichen</div></div><div class="steps">`;
+    for (const r of pt.rows)
+      h += `<div class="srow pkt"><span class="snm">${esc(r.t)}<small>${esc(r.sub || '')}</small></span><span class="z3 ${r.max > 0 && r.p >= r.max ? 'istok' : ''}">${r.p} / ${r.max}</span></div>`;
+    h += '</div>';
+    h += `<div class="hint">Je Schritt im Soll ${PKT.soll} Punkte, im Puffer ${PKT.puffer}. Fahrzeit im Budget ${PKT.fahrt}. Je bearbeitetem St\u00fcck 1 Punkt \u2013 auch wenn etwas fehlt und gemeldet wird. Je erledigtem Schritt ${PKT.schritt}, Tour komplett ${PKT.tour}, Fehlt-Liste und Zeit-Protokoll je ${PKT.meld}. \u00dcberspringbare Schritte z\u00e4hlen nicht.</div>`;
+    return h;
+  }
+
   function render() {
     const y0 = window.scrollY || 0;
     const mc = missList().length;
     document.getElementById('navzone').innerHTML =
       `<div class="navtabs"><div class="navtab${state.view === 0 ? ' act' : ''}" onclick="zeigeView(0)">Ablauf</div>` +
       `<div class="navtab${state.view === 2 ? ' act' : ''}" onclick="zeigeView(2)">\u23f1 Zeit</div>` +
+      `<div class="navtab${state.view === 3 ? ' act' : ''}" onclick="zeigeView(3)">\u2605 ${punkte().sum}</div>` +
       `<div class="navtab warn${state.view === 1 ? ' act' : ''}" onclick="zeigeView(1)">\u26a0 Fehlt (${mc})</div></div>`;
     const stkGep = DATA.machines.reduce((n, m) => n + m.items.reduce((a, it) => { const s2 = st(k(m, it)); return a + (s2 === 1 ? it.qty : s2 === 3 ? Math.min(partOf(k(m, it)), it.qty) : 0); }, 0), 0);
     const stkFehlt = missList().reduce((a, e) => a + e.miss, 0);
@@ -886,6 +934,12 @@ function flowApp(DATA) {
     if (state.view === 2) {
       document.getElementById('main').innerHTML = zeitUebersicht();
       document.getElementById('botbar').innerHTML = `<button class="stepback" onclick="zeigeView(0)">\u2039 Ablauf</button><div class="nx"><div class="lbl">ZEIT-\u00dcBERSICHT</div></div>`;
+      save(); scrollNach(y0);
+      return;
+    }
+    if (state.view === 3) {
+      document.getElementById('main').innerHTML = punkteAnsicht();
+      document.getElementById('botbar').innerHTML = `<button class="stepback" onclick="zeigeView(0)">\u2039 Ablauf</button><div class="nx"><div class="lbl">PUNKTE</div></div>`;
       save(); scrollNach(y0);
       return;
     }
@@ -950,7 +1004,7 @@ function flowApp(DATA) {
       txt += '- Anwahl ' + e.it.sel.join('+') + ' \u00b7 ' + e.miss + '\u00d7 ' + e.it.name + ' \u00b7 ' + e.it.art + ' \u00b7 [id ' + e.it.id + ']\n';
     }
     txt += '\nGesamt: ' + ml.length + ' Position(en) mit Fehlmenge \u2013 bitte Bestand korrigieren.';
-    await teile('Fehlt-Meldung Packliste ' + DATA.tour, txt);
+    if (await teile('Fehlt-Meldung Packliste ' + DATA.tour, txt)) { state.meld.fehlt = ml.length; save(); render(); }
   };
   window.reportZeit = async () => {
     let txt = 'ZEIT-PROTOKOLL Lagerliste ' + DATA.tour + ' ' + DATA.datum + '\n';
@@ -967,13 +1021,15 @@ function flowApp(DATA) {
     txt += 'Fahrzeit gesamt: Ist ' + fmtM(fahrtIst() / 60) + ' min \u00b7 Soll ' + fmtM(P.fahrzeit || 0) + ' min\n';
     txt += 'Pausen gesamt: ' + fmtM(pauseIst() / 60) + ' min (nicht in den Schritt-Zeiten enthalten)\n';
     txt += 'GESAMT: Ist ' + fmtM(istGes() / 60) + ' min \u00b7 Soll ' + fmtM(sollGesMin) + ' min\n';
-    await teile('Zeit-Protokoll Lagerliste ' + DATA.tour, txt);
+    if (await teile('Zeit-Protokoll Lagerliste ' + DATA.tour, txt)) { state.meld.zeit = 1; save(); render(); }
   };
+  // Rueckgabe true = geteilt bzw. in die Zwischenablage kopiert; false = abgebrochen/nicht moeglich.
   async function teile(titel, txt) {
-    try { await navigator.share({title: titel, text: txt}); }
+    try { await navigator.share({title: titel, text: txt}); return true; }
     catch(e) {
-      try { await navigator.clipboard.writeText(txt); document.getElementById('heard').textContent = 'Meldung kopiert \u2013 in Chat/Mail einf\u00fcgen'; }
-      catch(e2) { document.getElementById('heard').textContent = 'Teilen nicht m\u00f6glich \u2013 bitte Screenshot senden'; }
+      const abbruch = !!e && e.name === 'AbortError';
+      try { await navigator.clipboard.writeText(txt); document.getElementById('heard').textContent = 'Meldung kopiert \u2013 in Chat/Mail einf\u00fcgen'; return !abbruch; }
+      catch(e2) { document.getElementById('heard').textContent = 'Teilen nicht m\u00f6glich \u2013 bitte Screenshot senden'; return false; }
     }
   }
 
