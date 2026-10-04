@@ -175,13 +175,18 @@ h3.warn { color:var(--warn); }
 <script>
 const LS=(()=>{try{localStorage.setItem('__t','1');localStorage.removeItem('__t');return localStorage;}catch(e){const m={};return{getItem:k=>(k in m?m[k]:null),setItem:(k,v)=>{m[k]=String(v);},clear:()=>{for(const k in m)delete m[k];}};}})();
 // Schnelles Tippen hintereinander: Das Geraet deutet zwei Tipps als Doppeltipp und zoomt.
-// Der zweite schnelle Tipp wird deshalb abgefangen (kein Zoom) und sofort als normaler
-// Klick ausgefuehrt, damit kein Tipp verloren geht. Wischen/Scrollen und Zwei-Finger-
-// Gesten bleiben unberuehrt; Eingabefelder sind ausgenommen.
+// Nur ein zweiter schneller Tipp AN DERSELBEN STELLE (das ist der Doppeltipp) wird
+// abgefangen (kein Zoom) und genau einmal als normaler Klick ausgefuehrt, damit kein Tipp
+// verloren geht. Tipps an anderer Stelle, Wischen/Scrollen und Zwei-Finger-Gesten bleiben
+// unberuehrt; Eingabefelder sind ausgenommen. Ein danach eventuell noch vom Geraet
+// nachgelieferter Klick wird verworfen, damit nichts doppelt zaehlt.
 (() => {
   const ios = /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
   if (!ios) return;
-  let letzter = 0, x0 = 0, y0 = 0, bewegt = false;
+  let letzter = 0, lx = 0, ly = 0, x0 = 0, y0 = 0, bewegt = false, sperreBis = 0;
+  document.addEventListener('click', e => {
+    if (e.isTrusted && Date.now() < sperreBis) { e.preventDefault(); e.stopPropagation(); }
+  }, true);
   document.addEventListener('touchstart', e => {
     if (e.touches.length === 1) { x0 = e.touches[0].clientX; y0 = e.touches[0].clientY; bewegt = false; }
     else bewegt = true;
@@ -192,13 +197,16 @@ const LS=(()=>{try{localStorage.setItem('__t','1');localStorage.removeItem('__t'
   }, {passive: true});
   document.addEventListener('touchend', e => {
     if (bewegt || e.touches.length) { letzter = 0; return; }
-    const jetzt = Date.now(), schnell = jetzt - letzter < 400;
-    letzter = jetzt;
-    if (!schnell || !e.cancelable) return;
-    const z = e.target;
-    if (!z || typeof z.click !== 'function' || /^(INPUT|TEXTAREA|SELECT)$/.test(z.tagName)) return;
+    const jetzt = Date.now();
+    const doppel = jetzt - letzter < 400 && Math.abs(x0 - lx) < 45 && Math.abs(y0 - ly) < 45;
+    letzter = jetzt; lx = x0; ly = y0;
+    if (!doppel || !e.cancelable) return;
+    const t = e.target;
+    if (!t || !t.closest || t.closest('input,textarea,select')) return;
     e.preventDefault();
-    z.click();
+    sperreBis = jetzt + 350;
+    const z = t.closest('button,a,[onclick]');
+    if (z && z.isConnected && !z.disabled) z.click();
   }, {passive: false});
 })();
 const b64 = s => Uint8Array.from(atob(s), c => c.charCodeAt(0));
@@ -528,14 +536,14 @@ function flowApp(DATA) {
     endePause(); stopTimer(); state.done[s.id] = 1;
     if (navigator.vibrate) navigator.vibrate(30);
     const n = naechsterOffen(state.step + 1);
-    if (n < 0) { state.aktiv = null; save(); render(); speak('Tour komplett. Stark!'); }
+    if (n < 0) { state.aktiv = null; springTop = true; save(); render(); speak('Tour komplett. Stark!'); }
     else laufe(n);
   };
   window.skipStep = () => {
     const s = STEPS[state.step];
     endePause(); stopTimer(); state.skipd[s.id] = 1;
     const n = naechsterOffen(state.step + 1);
-    if (n < 0) { state.aktiv = null; save(); render(); }
+    if (n < 0) { state.aktiv = null; springTop = true; save(); render(); }
     else laufe(n);
   };
   // Automatischer Timer-Start beim Oeffnen (nicht waehrend einer Pause). Nach einer
@@ -559,6 +567,9 @@ function flowApp(DATA) {
   // (#nextitem); bei sonstigen Korrekturen bleibt sie stehen; nur Schritt-, Kisten-
   // oder Ansichtswechsel springen an den Seitenanfang.
   let springTop = true, scrollZiel = null;
+  // Kopfhoehe fuer die stehende Schritt-Karte; auch bei Drehen/Groessenaenderung nachfuehren.
+  const setKopf = () => document.documentElement.style.setProperty('--kopf', ((document.querySelector('header') || {}).offsetHeight || 0) + 'px');
+  window.addEventListener('resize', setKopf);
   function scrollNach(y0) {
     if (springTop) { window.scrollTo(0, 0); springTop = false; scrollZiel = null; return; }
     // Ablauf-Liste mitfuehren: der aktuelle Schritt steht direkt unter der (stehenden)
@@ -893,7 +904,7 @@ function flowApp(DATA) {
     // Schritte ohne Positionsliste: Karte bleibt stehen, die Ablauf-Liste laeuft mit und
     // zeigt immer den aktuellen Punkt. Pack-/Befuell-Schritte behalten ihr Scroll-Verhalten.
     const mitlauf = !s.mode;
-    document.documentElement.style.setProperty('--kopf', ((document.querySelector('header') || {}).offsetHeight || 0) + 'px');
+    setKopf();
     if (mitlauf) { springTop = false; scrollZiel = 'cur'; }
     h += `<div class="stepcard${mitlauf ? ' fest' : ''}"><div class="shead"><span class="kbadge">Nr ${s.nr}</span><span class="stitle">${esc(s.t)}</span><span class="ssub">${esc(s.sub || '')}</span></div>${timerStreifen(s)}</div>`;
     if (s.mode === 'pack') h = packUI(h);
