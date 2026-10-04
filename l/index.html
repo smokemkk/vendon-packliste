@@ -62,6 +62,8 @@ body.veraltet .tour { color:#fff; }
 .stepbtn { width:58px; height:58px; font-size:32px; font-weight:800; border-radius:14px; border:1.5px solid var(--acc); background:var(--card); color:var(--acc); line-height:1; }
 .stepbtn:disabled { opacity:.3; }
 .pickval { font-size:46px; font-weight:800; min-width:80px; text-align:center; font-variant-numeric:tabular-nums; color:var(--ok); }
+input.pickval { width:112px; padding:2px 0; font-family:inherit; line-height:1.15; background:var(--bg); border:1.5px solid var(--line); border-radius:12px; -webkit-appearance:none; appearance:none; }
+input.pickval:focus { outline:none; border-color:var(--acc); }
 .pickmiss { text-align:center; font-size:13px; color:var(--warn); min-height:16px; margin-bottom:6px; }
 .pickact { display:flex; gap:10px; }
 .pickok { flex:2; padding:14px 8px; font-size:16px; font-weight:800; border:0; border-radius:12px; background:var(--ok); color:#03210f; }
@@ -152,14 +154,8 @@ h3.warn { color:var(--warn); }
 .fertigbtn { flex:1; padding:15px 8px; font-size:19px; font-weight:800; border:0; border-radius:12px; background:var(--ok); color:#03210f; }
 .fertigbtn:disabled { opacity:.45; }
 .fillhint { margin:10px 2px 2px; font-size:13px; color:var(--dim); line-height:1.45; }
-/* Aktueller Schritt: bleibt im festen Kopf immer sichtbar (auch beim Scrollen und in anderen Ansichten). */
-#curstep:empty { display:none; }
-.csrow { display:flex; align-items:center; gap:8px; margin-top:4px; padding:6px 8px; background:#12202e; border-left:3px solid var(--acc); border-radius:8px; font-size:13px; color:var(--dim); }
-.csnr { flex:0 0 auto; background:var(--acc); color:#04283d; font-size:12px; font-weight:800; padding:2px 7px; border-radius:7px; font-variant-numeric:tabular-nums; }
-.cstxt { flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-.cstxt b { color:var(--fg); }
-.cstmr { flex:0 0 auto; font-size:15px; font-weight:800; font-variant-numeric:tabular-nums; color:var(--ok); }
-.cstmr.w { color:var(--warn); } .cstmr.o { color:var(--old); }
+/* Schritt-Karte (Timer) bleibt unter dem Kopf stehen; die Ablauf-Liste laeuft darunter mit. */
+.stepcard.fest { position:sticky; top:var(--kopf,0px); z-index:4; box-shadow:0 -11px 0 0 var(--bg), 0 6px 10px -4px #000a; }
 </style>
 </head>
 <body>
@@ -172,13 +168,39 @@ h3.warn { color:var(--warn); }
   <div id="agebar" role="alert"></div>
   <div class="tourrow"><span class="prog" id="zeitges"></span><span class="prog" id="prog"></span></div>
   <div id="navzone"></div>
-  <div id="curstep"></div>
   <div class="bar"><div id="bar"></div></div>
 </header>
 <div id="main"></div>
 <div class="next" id="botbar"><button class="undo" id="undo" onclick="undo()">&#8617; Zur&uuml;ck</button><div class="nx" id="nx"></div></div>
 <script>
 const LS=(()=>{try{localStorage.setItem('__t','1');localStorage.removeItem('__t');return localStorage;}catch(e){const m={};return{getItem:k=>(k in m?m[k]:null),setItem:(k,v)=>{m[k]=String(v);},clear:()=>{for(const k in m)delete m[k];}};}})();
+// Schnelles Tippen hintereinander: Das Geraet deutet zwei Tipps als Doppeltipp und zoomt.
+// Der zweite schnelle Tipp wird deshalb abgefangen (kein Zoom) und sofort als normaler
+// Klick ausgefuehrt, damit kein Tipp verloren geht. Wischen/Scrollen und Zwei-Finger-
+// Gesten bleiben unberuehrt; Eingabefelder sind ausgenommen.
+(() => {
+  const ios = /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+  if (!ios) return;
+  let letzter = 0, x0 = 0, y0 = 0, bewegt = false;
+  document.addEventListener('touchstart', e => {
+    if (e.touches.length === 1) { x0 = e.touches[0].clientX; y0 = e.touches[0].clientY; bewegt = false; }
+    else bewegt = true;
+  }, {passive: true});
+  document.addEventListener('touchmove', e => {
+    const t = e.touches[0];
+    if (!t || Math.abs(t.clientX - x0) > 10 || Math.abs(t.clientY - y0) > 10) bewegt = true;
+  }, {passive: true});
+  document.addEventListener('touchend', e => {
+    if (bewegt || e.touches.length) { letzter = 0; return; }
+    const jetzt = Date.now(), schnell = jetzt - letzter < 400;
+    letzter = jetzt;
+    if (!schnell || !e.cancelable) return;
+    const z = e.target;
+    if (!z || typeof z.click !== 'function' || /^(INPUT|TEXTAREA|SELECT)$/.test(z.tagName)) return;
+    e.preventDefault();
+    z.click();
+  }, {passive: false});
+})();
 const b64 = s => Uint8Array.from(atob(s), c => c.charCodeAt(0));
 async function deriveKey(pin, salt) {
   const km = await crypto.subtle.importKey('raw', new TextEncoder().encode(pin), 'PBKDF2', false, ['deriveKey']);
@@ -265,6 +287,29 @@ function kennzeichneAlter(DATA, listArt) {
     'Nicht nach dieser Liste arbeiten, bevor der aktuelle Stand gepr\u00fcft ist.');
   document.body.classList.add('veraltet');
   document.title = 'VERALTET (' + alterTage + ' Tage) - ' + document.title;
+}
+
+// ==================== Gemeinsames: Teilmenge per Tastatur ====================
+// Eingabefeld zwischen den Tasten -/+: Zahl antippen und eintippen (Ziffernblock).
+function pickFeld(v, key, qty) {
+  return `<input class="pickval" id="pickinp" type="text" inputmode="numeric" pattern="[0-9]*" autocomplete="off" enterkeyhint="done" value="${v}"` +
+    ` onfocus="const t=this;setTimeout(()=>{try{t.setSelectionRange(0,9);}catch(e){}},0)" oninput="pickSet(this,${qty})"` +
+    ` onblur="if(this.value==='')this.value='0'" onkeydown="if(event.key==='Enter'){event.preventDefault();this.blur();pickOk('${key}',${qty});}">`;
+}
+// Ziffern lesen, auf 0..Bedarf begrenzen, Hinweis und Tasten direkt aktualisieren
+// (kein Neuaufbau der Seite, sonst verliert das Feld den Fokus und die Tastatur schliesst).
+function pickLesen(el, qty) {
+  const roh = String(el.value).replace(/[^0-9]/g, '').slice(0, 4);
+  let v = roh === '' ? 0 : parseInt(roh, 10);
+  if (v > qty) v = qty;
+  const soll = roh === '' ? '' : String(v);
+  if (el.value !== soll) el.value = soll;
+  const mv = qty - v, pm = document.getElementById('pickmiss');
+  if (pm) pm.textContent = mv > 0 ? ('\u26a0 ' + mv + ' fehlt \u2013 wird gemeldet') : '\u2705 alles vorhanden';
+  const a = document.getElementById('pickminus'), b = document.getElementById('pickplus');
+  if (a) a.disabled = v <= 0;
+  if (b) b.disabled = v >= qty;
+  return v;
 }
 
 function startApp(DATA) {
@@ -463,9 +508,10 @@ function flowApp(DATA) {
     const s = STEPS[i];
     delete state.done[s.id]; delete state.skipd[s.id];
     state.aktiv = s.id; state.seit = Date.now();
-    // Bewusst KEIN Sprung an den Seitenanfang: die Ansicht bleibt, wo der Nutzer gerade
-    // arbeitet (Karte oben ODER Ablauf-Liste); nur ein Ansichtswechsel scrollt nach oben.
+    // Schritte ohne Positionsliste fuehren die Ablauf-Liste selbst mit (siehe render);
+    // beim Wechsel in einen Pack-/Befuell-Schritt geht es an den Seitenanfang zur Liste.
     if (state.view !== 0) { state.view = 0; springTop = true; }
+    if (s.mode) springTop = true;
     save(); render(); ansageSchritt();
   }
   const naechsterOffen = from => {
@@ -515,6 +561,18 @@ function flowApp(DATA) {
   let springTop = true, scrollZiel = null;
   function scrollNach(y0) {
     if (springTop) { window.scrollTo(0, 0); springTop = false; scrollZiel = null; return; }
+    // Ablauf-Liste mitfuehren: der aktuelle Schritt steht direkt unter der (stehenden)
+    // Schritt-Karte, die Zeile davor bleibt als Orientierung sichtbar.
+    if (scrollZiel === 'cur') {
+      scrollZiel = null;
+      const el = document.querySelector('.srow.cur'), karte = document.querySelector('.stepcard');
+      if (el) {
+        const kopf = (document.querySelector('header') || {}).offsetHeight || 0;
+        const kh = karte ? karte.offsetHeight + 20 : 0;
+        window.scrollTo(0, Math.max(0, el.getBoundingClientRect().top + window.scrollY - kopf - kh - 44));
+        return;
+      }
+    }
     if (scrollZiel === 'next') {
       scrollZiel = null;
       const el = document.getElementById('nextitem');
@@ -545,8 +603,10 @@ function flowApp(DATA) {
     for (let d = 1; d < DATA.machines.length; d++) {
       const j = (state.tab + d) % DATA.machines.length;
       if (DATA.machines[j].items.some(it => !st(k(DATA.machines[j], it)))) {
+        // Erst die erledigte Kiste abschliessen, dann die naechste ansagen.
+        const alt = state.tab;
         state.tab = j;
-        return 'Kiste ' + (j + 1) + '. ';
+        return 'Kiste ' + (alt + 1) + ' fertig. Kiste ' + (j + 1) + '. ';
       }
     }
     return '';
@@ -577,6 +637,7 @@ function flowApp(DATA) {
   };
   window.startPart = (key, qty) => { ui.pickKey = key; ui.pickVal = qty > 1 ? qty - 1 : 0; render(); };
   window.pickAdj = (delta, qty) => { ui.pickVal = Math.max(0, Math.min(qty, ui.pickVal + delta)); render(); };
+  window.pickSet = (el, qty) => { ui.pickVal = pickLesen(el, qty); };
   window.pickCancel = () => { ui.pickKey = null; render(); };
   window.pickOk = (key, qty) => { const v = ui.pickVal; if (v >= qty) mark(key, 1); else if (v <= 0) mark(key, 2); else markPart(key, v); };
   window.undo = () => {
@@ -631,9 +692,9 @@ function flowApp(DATA) {
   function partPicker(it, key) {
     const v = ui.pickVal, mv = it.qty - v;
     return `<div class="partpick">
-      <div class="pq">Wie viele <b>tats\u00e4chlich</b>? (Bedarf ${it.qty})</div>
-      <div class="pickrow"><button class="stepbtn" ${v <= 0 ? 'disabled' : ''} onclick="pickAdj(-1,${it.qty})">\u2212</button><span class="pickval">${v}</span><button class="stepbtn" ${v >= it.qty ? 'disabled' : ''} onclick="pickAdj(1,${it.qty})">+</button></div>
-      <div class="pickmiss">${mv > 0 ? ('\u26a0 ' + mv + ' fehlt \u2013 wird gemeldet') : '\u2705 alles vorhanden'}</div>
+      <div class="pq">Wie viele <b>tats\u00e4chlich</b>? (Bedarf ${it.qty}) \u00b7 Zahl antippen = eintippen</div>
+      <div class="pickrow"><button class="stepbtn" id="pickminus" ${v <= 0 ? 'disabled' : ''} onclick="pickAdj(-1,${it.qty})">\u2212</button>${pickFeld(v, key, it.qty)}<button class="stepbtn" id="pickplus" ${v >= it.qty ? 'disabled' : ''} onclick="pickAdj(1,${it.qty})">+</button></div>
+      <div class="pickmiss" id="pickmiss">${mv > 0 ? ('\u26a0 ' + mv + ' fehlt \u2013 wird gemeldet') : '\u2705 alles vorhanden'}</div>
       <div class="pickact"><button class="pickok" onclick="pickOk('${key}',${it.qty})">\u2713 \u00dcbernehmen</button><button class="pickcancel" onclick="pickCancel()">Abbrechen</button></div>
     </div>`;
   }
@@ -789,16 +850,6 @@ function flowApp(DATA) {
     document.getElementById('zeitges').innerHTML = `${state.pausiert ? '\u23f8 ' : '\u23f1 '}<b>${fmtM(istGes() / 60)}</b> / ${fmtM(sollGesMin)} min`;
     const doneN = STEPS.filter(s => state.done[s.id] || state.skipd[s.id]).length;
     document.getElementById('bar').style.width = (doneN / STEPS.length * 100) + '%';
-    // Aktueller Schritt im festen Kopf: bleibt sichtbar, auch wenn die Schritt-Karte
-    // weggescrollt ist oder eine andere Ansicht offen ist. Antippen fuehrt zum Ablauf.
-    const cs = document.getElementById('curstep');
-    if (cs) {
-      if (naechsterOffen(0) < 0) cs.innerHTML = '';
-      else {
-        const a = STEPS[state.step];
-        cs.innerHTML = `<div class="csrow" onclick="zeigeView(0)"><span class="csnr">Nr ${a.nr}</span><span class="cstxt"><b>${esc(a.t)}</b>${a.sub ? ' \u00b7 ' + esc(a.sub) : ''}</span><span class="${tmrKlasse(a).replace('tmr', 'cstmr')}" id="cstmr">${state.pausiert ? '\u23f8 ' : ''}${fmtClock(ist(a.id))}</span></div>`;
-      }
-    }
 
     let h = '';
     if (state.view === 1) {
@@ -839,7 +890,12 @@ function flowApp(DATA) {
       return;
     }
     const s = STEPS[state.step];
-    h += `<div class="stepcard"><div class="shead"><span class="kbadge">Nr ${s.nr}</span><span class="stitle">${esc(s.t)}</span><span class="ssub">${esc(s.sub || '')}</span></div>${timerStreifen(s)}</div>`;
+    // Schritte ohne Positionsliste: Karte bleibt stehen, die Ablauf-Liste laeuft mit und
+    // zeigt immer den aktuellen Punkt. Pack-/Befuell-Schritte behalten ihr Scroll-Verhalten.
+    const mitlauf = !s.mode;
+    document.documentElement.style.setProperty('--kopf', ((document.querySelector('header') || {}).offsetHeight || 0) + 'px');
+    if (mitlauf) { springTop = false; scrollZiel = 'cur'; }
+    h += `<div class="stepcard${mitlauf ? ' fest' : ''}"><div class="shead"><span class="kbadge">Nr ${s.nr}</span><span class="stitle">${esc(s.t)}</span><span class="ssub">${esc(s.sub || '')}</span></div>${timerStreifen(s)}</div>`;
     if (s.mode === 'pack') h = packUI(h);
     else if (s.mode === 'fill') h = fillUI(h, s);
     h = ablaufListe(h);
@@ -861,10 +917,8 @@ function flowApp(DATA) {
   // Sekunden-Tick: nur Timer-Anzeigen aktualisieren (kein Voll-Render), alle 10 s speichern.
   let tickN = 0;
   setInterval(() => {
-    const s = STEPS[state.step];
-    const ce = document.getElementById('cstmr');
-    if (ce && state.aktiv === s.id) { ce.textContent = fmtClock(ist(s.id)); ce.className = tmrKlasse(s).replace('tmr', 'cstmr'); }
     if (state.view !== 0) return;
+    const s = STEPS[state.step];
     const el = document.getElementById('tmr');
     if (el && state.aktiv === s.id) { el.textContent = fmtClock(ist(s.id)); el.className = tmrKlasse(s); }
     const zg = document.getElementById('zeitges');
@@ -1130,9 +1184,9 @@ function render() {
       if (ui.pickKey === key) {
         const v = ui.pickVal, mv = it.qty - v;
         h += `<div class="partpick">
-          <div class="pq">Wie viele <b>gepackt</b>? (Bedarf ${it.qty})</div>
-          <div class="pickrow"><button class="stepbtn" ${v<=0?'disabled':''} onclick="pickAdj(-1,${it.qty})">\u2212</button><span class="pickval">${v}</span><button class="stepbtn" ${v>=it.qty?'disabled':''} onclick="pickAdj(1,${it.qty})">+</button></div>
-          <div class="pickmiss">${mv>0?('\u26a0 '+mv+' fehlt \u2013 wird gemeldet'):'\u2705 alles vorhanden'}</div>
+          <div class="pq">Wie viele <b>gepackt</b>? (Bedarf ${it.qty}) \u00b7 Zahl antippen = eintippen</div>
+          <div class="pickrow"><button class="stepbtn" id="pickminus" ${v<=0?'disabled':''} onclick="pickAdj(-1,${it.qty})">\u2212</button>${pickFeld(v, key, it.qty)}<button class="stepbtn" id="pickplus" ${v>=it.qty?'disabled':''} onclick="pickAdj(1,${it.qty})">+</button></div>
+          <div class="pickmiss" id="pickmiss">${mv>0?('\u26a0 '+mv+' fehlt \u2013 wird gemeldet'):'\u2705 alles vorhanden'}</div>
           <div class="pickact"><button class="pickok" onclick="pickOk('${key}',${it.qty})">\u2713 \u00dcbernehmen</button><button class="pickcancel" onclick="pickCancel()">Abbrechen</button></div>
         </div>`;
       } else {
@@ -1192,8 +1246,9 @@ function packWeiter() {
   for (let d = 1; d < DATA.machines.length; d++) {
     const j = (state.tab + d) % DATA.machines.length;
     if (DATA.machines[j].items.some(it => !st(k(DATA.machines[j], it)))) {
+      const alt = state.tab;
       state.tab = j;
-      return 'Kiste ' + (j + 1) + '. ';
+      return 'Kiste ' + (alt + 1) + ' fertig. Kiste ' + (j + 1) + '. ';
     }
   }
   return '';
@@ -1224,6 +1279,7 @@ window.markPart = (key, n) => {
 };
 window.startPart = (key, qty) => { ui.pickKey = key; ui.pickVal = qty > 1 ? qty - 1 : 0; render(); };
 window.pickAdj = (delta, qty) => { ui.pickVal = Math.max(0, Math.min(qty, ui.pickVal + delta)); render(); };
+window.pickSet = (el, qty) => { ui.pickVal = pickLesen(el, qty); };
 window.pickCancel = () => { ui.pickKey = null; render(); };
 window.pickOk = (key, qty) => { const v = ui.pickVal; if (v >= qty) mark(key, 1); else if (v <= 0) mark(key, 2); else markPart(key, v); };
 window.undo = () => {
