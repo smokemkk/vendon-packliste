@@ -1099,14 +1099,16 @@ function flowApp(DATA) {
       const sec = ist(s.id);
       if (sec < 1 && !state.done[s.id] && !state.skipd[s.id]) continue;
       txt += '- Nr ' + s.nr + ' \u00b7 ' + s.t + (s.sub ? ' \u00b7 ' + s.sub : '') + ' \u00b7 Ist ' + fmtM(sec / 60) + ' min'
-        + (s.soll ? ' \u00b7 Soll ' + fmtM(s.soll) + ' min' + (s.ev ? ' je Ereignis' : '') : '')
+        + (s.soll ? ' \u00b7 Soll ' + fmtM(s.soll) + ' min \u00b7 mit Puffer ' + fmtM(s.soll * (1 + pufVon(s.nr))) + ' min' + (s.ev ? ' je Ereignis' : '') : '')
         + (state.skipd[s.id] ? ' \u00b7 \u00fcbersprungen' : (state.done[s.id] ? '' : ' \u00b7 offen')) + '\n';
     }
     txt += '\nBedarfs-Annahmen je Tour (im Gesamt-Soll): Nr 8 \u00d7 ' + (P.muenz || 0) + ' = ' + fmtM((P.muenz || 0) * sollMin(8, 1))
       + ' min \u00b7 Nr 9 \u00d7 ' + (P.todos || 0) + ' = ' + fmtM((P.todos || 0) * sollMin(9, 1)) + ' min\n';
-    txt += 'Fahrzeit gesamt: Ist ' + fmtM(fahrtIst() / 60) + ' min \u00b7 Soll ' + fmtM(P.fahrzeit || 0) + ' min\n';
+    txt += 'Fahrzeit gesamt: Ist ' + fmtM(fahrtIst() / 60) + ' min \u00b7 Soll ' + fmtM(P.fahrzeit || 0) + ' min \u00b7 mit Puffer ' + fmtM((P.fahrzeit || 0) * (1 + pufVon(4))) + ' min\n';
     txt += 'Pausen gesamt: ' + fmtM(pauseIst() / 60) + ' min (nicht in den Schritt-Zeiten enthalten)\n';
-    txt += 'GESAMT: Ist ' + fmtM(istGes() / 60) + ' min \u00b7 Soll ' + fmtM(sollGesMin) + ' min\n';
+    // Gesamt-Soll mit Puffer = dieselbe Summe wie in der Zeit-Uebersicht (Spalte "+Puffer").
+    const sollMitPuffer = zeitZeilen().reduce((a, z) => a + z.mp, 0);
+    txt += 'GESAMT: Ist ' + fmtM(istGes() / 60) + ' min \u00b7 Soll ' + fmtM(sollGesMin) + ' min \u00b7 mit Puffer ' + fmtM(sollMitPuffer) + ' min\n';
     const stand = zeitSig();
     if (await teile('Zeit-Protokoll Lagerliste ' + DATA.tour, txt)) { state.meld.zeit = stand; save(); render(); }
   };
