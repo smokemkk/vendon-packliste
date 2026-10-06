@@ -19,6 +19,8 @@ a .meta i { color:var(--dim); font-size:14px; font-weight:500; font-style:normal
 .chip.pruef { display:inline-block; background:#3a2f14; color:#f5a623; border:1px solid #f5a623; }
 .chip.pending, .chip.unknown, .chip.none { display:inline-block; background:var(--card); color:var(--dim); border:1px solid var(--line); }
 a.oldrow { border-color:#ff3b30; background:#2c1413; }
+h2 { font-size:13px; color:var(--dim); letter-spacing:1px; text-transform:uppercase; margin:22px 2px 10px; }
+a.extern { border-style:dashed; }
 p { color:var(--dim); font-size:13px; margin-top:18px; line-height:1.5; }
 </style>
 </head>
@@ -30,8 +32,11 @@ p { color:var(--dim); font-size:13px; margin-top:18px; line-height:1.5; }
 <a href="sl2/" data-slug="sl2">SL 2 Tour<span class="meta"><em class="chip"></em><i>Sonntag</i></span></a>
 <a href="l2/" data-slug="l2">L2 Tour<span class="meta"><em class="chip"></em><i>Sonntag</i></span></a>
 <a href="b2/" data-slug="b2">B2 Tour<span class="meta"><em class="chip"></em><i>Montag</i></span></a>
+<h2>Weitere Listen</h2>
+<a href="https://smokemkk.github.io/lagerarbeiten-checkliste/" class="extern">Lagerarbeiten<span class="meta"><em class="chip none">EIGENE PIN</em><i>wöchentlich · Lager</i></span></a>
 <p>Farbe = Stand der Liste: <b style="color:#2ecc71">HEUTE</b> &middot; <b style="color:#f5a623">GESTERN</b> &middot; <b style="color:#ff3b30">X TAGE ALT = veraltet</b>.<br>
-Tipp: Die Tour-Seite als Homescreen-Icon ablegen. PIN wird nur einmal je Ger&auml;t ben&ouml;tigt.</p>
+Tipp: Die Tour-Seite als Homescreen-Icon ablegen. PIN wird nur einmal je Ger&auml;t ben&ouml;tigt.<br>
+Weitere Listen (gestrichelt) sind eigene Seiten mit eigener PIN; ihr Stand wird hier nicht gepr&uuml;ft.</p>
 <script>
 const b64 = s => Uint8Array.from(atob(s), c => c.charCodeAt(0));
 async function standVon(slug, pin) {
