@@ -406,6 +406,11 @@ function flowApp(DATA) {
       add(14, {soll: sollMin(14, 1)});
     }
   };
+  // Tages-Abweichungen aus den Tour-Daten: Punkte, die an diesem Tag vorab anfallen.
+  (P.vorab || []).forEach(v => {
+    if (!v || typeof v.nr !== 'number' || !T(v.nr)) return;
+    STEPS.push({id: 't' + v.nr + 'v', nr: v.nr, t: titel(v.nr), sub: String(v.sub || ''), soll: sollMin(v.nr, 1)});
+  });
   STEPS.push({id: 't1', nr: 1, t: titel(1), sub: 'Alle Kisten dieser Tour', mode: 'pack', soll: sollMin(1, stkGes)});
   if ((P.todos || 0) > 0) STEPS.push({id: 't2', nr: 2, t: titel(2), sub: 'Nur bei Bedarf', skip: 1, soll: sollMin(2, P.todos)});
   STEPS.push({id: 't3', nr: 3, t: titel(3), soll: sollMin(3, 1)});
@@ -459,9 +464,11 @@ function flowApp(DATA) {
     autoBlock(m.device);
     STEPS.push({id: 'o' + m.device + '_3b', nr: '3b', t: titel(3), sub: m.label, ort: 1, soll: 0});
   });
-  fahrtN++; STEPS.push({id: 'f' + fahrtN, nr: 4, t: titel(4), sub: '\u2192 zur\u00fcck', fahrt: 1});
-  STEPS.push({id: 't17', nr: 17, t: titel(17), soll: sollMin(17, 1)});
-  STEPS.push({id: 't18', nr: 18, t: titel(18), soll: sollMin(18, 1)});
+  // Tages-Abweichungen aus den Tour-Daten: Tour endet am letzten Standort bzw. Abschluss-Punkte entfallen.
+  const ohneT = Array.isArray(P.ohne_tour) ? P.ohne_tour : [];
+  if (!P.ohne_rueck) { fahrtN++; STEPS.push({id: 'f' + fahrtN, nr: 4, t: titel(4), sub: '\u2192 zur\u00fcck', fahrt: 1}); }
+  if (ohneT.indexOf(17) < 0) STEPS.push({id: 't17', nr: 17, t: titel(17), soll: sollMin(17, 1)});
+  if (ohneT.indexOf(18) < 0) STEPS.push({id: 't18', nr: 18, t: titel(18), soll: sollMin(18, 1)});
   if (state.step >= STEPS.length) state.step = 0;
   // Wurde am selben Tag ein geaenderter Plan veroeffentlicht, kann eine gespeicherte
   // Schritt-ID nicht mehr existieren -> Timer sauber loslassen, Auto-Start unten greift.
