@@ -371,18 +371,32 @@ function flowApp(DATA) {
   if (typeof state.view !== 'number') state.view = 0;    // 0 = Ablauf, 1 = Fehlt, 2 = Zeit
   if (typeof state.pauseSum !== 'number') state.pauseSum = 0;  // Pausen-Sekunden gesamt
   if (!state.meld || typeof state.meld !== 'object') state.meld = {};  // gesendete Meldungen (fuer die Punkte)
-  const save = () => LS.setItem(KEY, JSON.stringify(state));
+  // state.cur = stabile Kennung des angezeigten Schritts (state.step ist nur ein Index und
+  // waere nach einer Neuveroeffentlichung mit anderem Zuschnitt ein anderer Schritt - wichtig
+  // in der Pause, in der state.aktiv leer ist).
+  const save = () => { try { if (STEPS[state.step]) state.cur = STEPS[state.step].id; } catch (e) {} LS.setItem(KEY, JSON.stringify(state)); };
 
   // ---- Schritt-Liste aufbauen ----
   // Schritt-Titel kommen aus den entschluesselten Daten (P.taet[nr].n), nichts steht statisch hier.
   const T = n => (P.taet || {})[String(n)] || null;
-  const titel = n => { const t = T(n); return t && t.n ? String(t.n).replace(/\s*\([^)]*\)\s*$/, '') : 'Schritt ' + n; };
+  // Klammerzusatz am Ende entfaellt - ausser bei Nr. 15/19: dort unterscheidet NUR der Zusatz
+  // ("Outdoor-Standort" / "im Kioskladen") die beiden Kehr-Taetigkeiten.
+  const titel = n => { const t = T(n); return t && t.n ? ((n === 15 || n === 19) ? String(t.n) : String(t.n).replace(/\s*\([^)]*\)\s*$/, '')) : 'Schritt ' + n; };
   const sollMin = (n, menge) => { const t = T(n); if (!t) return 0; let v = t.s * menge; if (String(t.e).charAt(0) === 's') v /= 60; return v; };
   const pufVon = n => { const t = T(n); return (t && typeof t.p === 'number') ? t.p : 0.1; };
   const M_BY_DEV = {}; DATA.machines.forEach((m, i) => { M_BY_DEV[m.device] = i; });
   const stkVon = m => m.items.reduce((a, it) => a + it.qty, 0);
   const stkGes = DATA.machines.reduce((a, m) => a + stkVon(m), 0);
   const STEPS = [];
+  // Tatsaechlich offene Aufgaben je Automat (falls in den Tour-Daten enthalten): Anzahl fuer
+  // Nr. 8 (Muenzgeldbefuellungen) bzw. Nr. 9 (ToDos) ueber die genannten Automaten, sonst null.
+  const BD = (P.bedarf && P.bedarf.dev) || null;
+  const bedarfN = (nr, devs) => {
+    if (!BD) return null;
+    let n = 0;
+    devs.forEach(d => { const e = BD[String(d)]; if (e) n += (nr === 8 ? e.m : e.t) || 0; });
+    return Math.round(n * 100) / 100;
+  };
   let fahrtN = 0;
   const autoBlock = (dev, gebuendelt) => {
     const mi = M_BY_DEV[dev]; if (mi == null) return;
@@ -396,8 +410,8 @@ function flowApp(DATA) {
       add(7, {soll: sollMin(7, 1)});
       // Bedarfs-Schritte: Sollzeit gilt JE EREIGNIS (ev:1) und zaehlt nicht je Automat in die
       // Gesamt-Sollzeit; dort gehen stattdessen die Mengen-Annahmen der Tour ein (s. sollGesMin).
-      add(8, {skip: 1, ev: 1, soll: sollMin(8, 1)});
-      add(9, {skip: 1, ev: 1, soll: sollMin(9, 1)});
+      add(8, {skip: 1, ev: 1, soll: sollMin(8, 1), bn: bedarfN(8, [dev])});
+      add(9, {skip: 1, ev: 1, soll: sollMin(9, 1), bn: bedarfN(9, [dev])});
     }
     add(10, {mode: 'fill', soll: sollMin(10, stkVon(m))});
     if (!gebuendelt) {
@@ -412,16 +426,26 @@ function flowApp(DATA) {
     STEPS.push({id: 't' + v.nr + 'v', nr: v.nr, t: titel(v.nr), sub: String(v.sub || ''), soll: sollMin(v.nr, 1)});
   });
   STEPS.push({id: 't1', nr: 1, t: titel(1), sub: 'Alle Kisten dieser Tour', mode: 'pack', soll: sollMin(1, stkGes)});
-  if ((P.todos || 0) > 0) STEPS.push({id: 't2', nr: 2, t: titel(2), sub: 'Nur bei Bedarf', skip: 1, soll: sollMin(2, P.todos)});
+  // Menge fuer Nr. 2: Automaten mit offenen ToDos (falls bekannt), sonst die ToDo-Annahme der Tour.
+  const n2 = (typeof P.todos_auto === 'number') ? P.todos_auto : (P.todos || 0);
+  if (n2 > 0) STEPS.push({id: 't2', nr: 2, t: titel(2), sub: (typeof P.todos_auto === 'number') ? ('Für ' + n2 + ' Automaten mit offenen ToDos') : 'Nur bei Bedarf', skip: 1, soll: sollMin(2, n2)});
   STEPS.push({id: 't3', nr: 3, t: titel(3), soll: sollMin(3, 1)});
   // Fester Kontroll-Schritt ohne Soll (nicht Teil der Soll-Tabelle): vor der Abfahrt
   // pruefen, dass alles verschlossen ist und das Licht aus ist.
-  STEPS.push({id: 't3a', nr: '3a', t: 'Lager abschlie\u00dfen', sub: 'Alles zu? Licht aus?', soll: 0});
+  // Ab Katalog v11 (P.abschl_vor) ist das Abschliessen vor der Abfahrt die Taetigkeit Nr. 18 mit Sollzeit.
+  if (P.abschl_vor && T(18)) STEPS.push({id: 't3a', nr: 18, t: titel(18), sub: 'Vor der Abfahrt: alles zu? Licht aus?', soll: sollMin(18, 1)});
+  else STEPS.push({id: 't3a', nr: '3a', t: 'Lager abschlie\u00dfen', sub: 'Alles zu? Licht aus?', soll: 0});
   const seen = {};
   (P.standorte || []).forEach((st, si) => {
     const devs = (st.devs || []).filter(d => M_BY_DEV[d] != null);
     if (!devs.length) return;
-    fahrtN++; STEPS.push({id: 'f' + fahrtN, nr: 4, t: titel(4), sub: '\u2192 ' + st.name, fahrt: 1});
+    // Stabile Standort-Kennung = erstes Device des Standorts. Frueher der Positions-Index:
+    // bei Neuveroeffentlichung am selben Tag mit anderer Reihenfolge waeren gespeicherte
+    // Zeiten/Haken sonst still einem anderen Standort zugefallen (Omsdex 2026-10-10).
+    // Praefixe 'sd'/'fd' sind bewusst verschieden von den frueheren Positions-Kennungen
+    // s<Index>_... / f<n> - eine alte Kennung kann so nie einer neuen gleichen.
+    const sk = devs[0];
+    fahrtN++; STEPS.push({id: 'fd' + sk, nr: 4, t: titel(4), sub: '\u2192 ' + st.name, fahrt: 1});
     // Standort mit mehreren Automaten: alle Punkte ausser dem Befuellen in einem Rutsch fuer
     // ALLE Automaten - vorab 5/6/7 (+ Bedarfs-Schritte 8/9), dann je Automat NUR das
     // Befuellen in Reihenfolge, danach gebuendelt 11/12/14. Soll = Anzahl x Einzel-Soll.
@@ -430,18 +454,18 @@ function flowApp(DATA) {
     const buendel = devs.length > 1 && !st.zf;
     const gsub = st.name + ' \u00b7 alle ' + devs.length + ' Automaten';
     const gpush = (nr, o) => STEPS.push(Object.assign({
-      id: 's' + si + '_' + nr + 'g', nr, t: titel(nr), sub: gsub, ort: 1
+      id: 'sd' + sk + '_' + nr + 'g', nr, t: titel(nr), sub: gsub, ort: 1
     }, o));
     if (buendel) {
       [5, 6, 7].forEach(nr => gpush(nr, {soll: sollMin(nr, devs.length)}));
-      [8, 9].forEach(nr => gpush(nr, {skip: 1, ev: 1, soll: sollMin(nr, 1)}));
+      [8, 9].forEach(nr => gpush(nr, {skip: 1, ev: 1, soll: sollMin(nr, 1), bn: bedarfN(nr, devs)}));
     }
     devs.forEach((dev, di) => {
       // st.zf: gleiche Adresse, aber getrennte Positionen -> eigener Fahrt-Schritt
       // zwischen den Automaten (zaehlt ins Fahrzeit-Budget der Tour).
       if (st.zf && di > 0) {
         const mZiel = DATA.machines[M_BY_DEV[dev]];
-        fahrtN++; STEPS.push({id: 'f' + fahrtN, nr: 4, t: titel(4), sub: '\u2192 ' + (mZiel ? mZiel.label : st.name), fahrt: 1});
+        fahrtN++; STEPS.push({id: 'fz' + dev, nr: 4, t: titel(4), sub: '\u2192 ' + (mZiel ? mZiel.label : st.name), fahrt: 1});
       }
       seen[dev] = 1; autoBlock(dev, buendel);
     });
@@ -450,36 +474,52 @@ function flowApp(DATA) {
     }
     // st.ohne: Nummern der Punkte, die an diesem Standort entfallen (aus den Tour-Daten).
     const ohne = st.ohne || [];
-    if (ohne.indexOf(13) < 0) STEPS.push({id: 's' + si + '_13', nr: 13, t: titel(13), sub: st.name, soll: sollMin(13, 1)});
-    if (ohne.indexOf(15) < 0) STEPS.push({id: 's' + si + '_15', nr: 15, t: titel(15), sub: st.name, soll: sollMin(15, 1)});
-    if (st.kiosk && ohne.indexOf(16) < 0) STEPS.push({id: 's' + si + '_16', nr: 16, t: titel(16), sub: st.name, soll: sollMin(16, 1)});
+    if (ohne.indexOf(13) < 0) STEPS.push({id: 'sd' + sk + '_13', nr: 13, t: titel(13), sub: st.name, soll: sollMin(13, 1)});
+    // Kehren: im Kioskladen Nr. 19, sonst Nr. 15 (Outdoor). "ohne 15" heisst: kein Kehren.
+    const kehrNr = (st.kiosk && T(19)) ? 19 : 15;
+    if (ohne.indexOf(15) < 0 && ohne.indexOf(kehrNr) < 0) STEPS.push({id: 'sd' + sk + '_' + kehrNr, nr: kehrNr, t: titel(kehrNr), sub: st.name, soll: sollMin(kehrNr, 1)});
+    if (st.kiosk && ohne.indexOf(16) < 0) STEPS.push({id: 'sd' + sk + '_16', nr: 16, t: titel(16), sub: st.name, soll: sollMin(16, 1)});
     // Vor der Weiterfahrt: Kisten zurueck ins Auto. Kontroll-Schritt ohne eigenes Soll
     // (die zugehoerige Sollzeit ist je Tour bemessen und steckt in Nr. 3).
-    STEPS.push({id: 's' + si + '_3b', nr: '3b', t: titel(3), sub: st.name, ort: 1, soll: 0});
+    // Ab Katalog v11 hat das Zurueckpacken eine eigene Taetigkeit (Nr. 20, Sollzeit je Standort).
+    if (T(20)) STEPS.push({id: 'sd' + sk + '_3b', nr: 20, t: titel(20), sub: st.name, ort: 1, soll: sollMin(20, 1)});
+    else STEPS.push({id: 'sd' + sk + '_3b', nr: '3b', t: titel(3), sub: st.name, ort: 1, soll: 0});
   });
   // Sicherheitsnetz: Automaten, die in keiner Gruppe auftauchen, bekommen trotzdem ihren Block.
   DATA.machines.forEach(m => {
     if (seen[m.device]) return;
-    fahrtN++; STEPS.push({id: 'f' + fahrtN, nr: 4, t: titel(4), sub: '\u2192 ' + m.label, fahrt: 1});
+    fahrtN++; STEPS.push({id: 'fd' + m.device, nr: 4, t: titel(4), sub: '\u2192 ' + m.label, fahrt: 1});
     autoBlock(m.device);
-    STEPS.push({id: 'o' + m.device + '_3b', nr: '3b', t: titel(3), sub: m.label, ort: 1, soll: 0});
+    if (T(20)) STEPS.push({id: 'o' + m.device + '_3b', nr: 20, t: titel(20), sub: m.label, ort: 1, soll: sollMin(20, 1)});
+    else STEPS.push({id: 'o' + m.device + '_3b', nr: '3b', t: titel(3), sub: m.label, ort: 1, soll: 0});
   });
   // Tages-Abweichungen aus den Tour-Daten: Tour endet am letzten Standort bzw. Abschluss-Punkte entfallen.
   const ohneT = Array.isArray(P.ohne_tour) ? P.ohne_tour : [];
-  if (!P.ohne_rueck) { fahrtN++; STEPS.push({id: 'f' + fahrtN, nr: 4, t: titel(4), sub: '\u2192 zur\u00fcck', fahrt: 1}); }
+  if (!P.ohne_rueck) { fahrtN++; STEPS.push({id: 'frueck', nr: 4, t: titel(4), sub: '\u2192 zur\u00fcck', fahrt: 1}); }
   if (ohneT.indexOf(17) < 0) STEPS.push({id: 't17', nr: 17, t: titel(17), soll: sollMin(17, 1)});
   if (ohneT.indexOf(18) < 0) STEPS.push({id: 't18', nr: 18, t: titel(18), soll: sollMin(18, 1)});
   if (state.step >= STEPS.length) state.step = 0;
   // Wurde am selben Tag ein geaenderter Plan veroeffentlicht, kann eine gespeicherte
   // Schritt-ID nicht mehr existieren -> Timer sauber loslassen, Auto-Start unten greift.
-  const STEP_IDS = {}; STEPS.forEach(s => { STEP_IDS[s.id] = 1; });
+  // Kennungen muessen eindeutig sein (sonst teilten sich zwei Schritte Haken und Zeit): eine
+  // unerwartete Dublette bekommt ein Suffix. Doppelte Automaten lehnt schon das Publish-Skript ab.
+  const STEP_IDS = {}; STEPS.forEach(s => { let id = s.id, n = 1; while (STEP_IDS[id]) id = s.id + '~' + (++n); s.id = id; STEP_IDS[id] = 1; });
   // Migration alter Tagesstaende: An gebuendelten Laden-Standorten wandern Zeit und Status
   // fruehrer Einzel-Schritte (a<dev>_<nr>) in den jeweiligen Buendel-Schritt.
   (P.standorte || []).forEach((st, si) => {
     [5, 6, 7, 8, 9, 11, 12, 14].forEach(nr => {
-      const gid = 's' + si + '_' + nr + 'g';
-      if (!STEP_IDS[gid]) return;
+      const sk = (st.devs || []).filter(d => M_BY_DEV[d] != null)[0];
+      const gid = 'sd' + sk + '_' + nr + 'g';
+      if (sk == null || !STEP_IDS[gid]) return;
       const alt = (st.devs || []).map(d => 'a' + d + '_' + nr);
+      // Laeuft gerade ein alter Einzel-Schritt, dessen Laufzeit sichern und den Timer auf dem
+      // Buendel-Schritt weiterlaufen lassen (sonst ginge die Zeit seit state.seit verloren).
+      if (alt.indexOf(state.aktiv) >= 0 && !STEP_IDS[state.aktiv]) {
+        if (state.seit) state.zeit[state.aktiv] = (state.zeit[state.aktiv] || 0) + (Date.now() - state.seit) / 1000;
+        state.aktiv = gid; state.seit = Date.now();
+      }
+      // Auch der nur angezeigte (z. B. pausierte) alte Einzel-Schritt wandert auf den Buendel-Schritt.
+      if (alt.indexOf(state.cur) >= 0 && !STEP_IDS[state.cur]) state.cur = gid;
       const hatStatus = alt.some(id => state.done[id] || state.skipd[id] || state.zeit[id]);
       if (!hatStatus) return;
       const alleErledigt = alt.every(id => state.done[id] || state.skipd[id]);
@@ -496,12 +536,29 @@ function flowApp(DATA) {
     });
   });
   let aktivVerwaist = false;
+  // Eintraege, zu denen es keinen Schritt (mehr) gibt - z. B. positionsabhaengige Kennungen
+  // aelterer Fassungen (s<Index>_<Nr>, f<n>) oder entfallene Schritte -, werden verworfen statt
+  // einem anderen Schritt zugeordnet. Gilt nur fuer Standort-/Fahrt-Kennungen; Automaten- und
+  // Tour-Schritte (a…, t…) behandelt die Buendel-Migration bzw. bleiben unberuehrt.
+  ['zeit', 'done', 'skipd'].forEach(feld => {
+    Object.keys(state[feld] || {}).forEach(id => {
+      if (/^[sf]/.test(id) && !STEP_IDS[id]) { delete state[feld][id]; aktivVerwaist = true; }
+    });
+  });
   if (state.aktiv && !STEP_IDS[state.aktiv]) { state.aktiv = null; state.seit = null; aktivVerwaist = true; }
   // Existiert die aktive Schritt-ID noch, den (index-basierten) state.step darauf
   // ausrichten - neu eingefuegte Schritte verschieben sonst gespeicherte Indizes.
   if (state.aktiv) {
     const i = STEPS.findIndex(s => s.id === state.aktiv);
     if (i >= 0) state.step = i;
+  }
+  // Kein laufender Schritt (z. B. Pause): den angezeigten Schritt ueber seine gespeicherte
+  // Kennung wiederfinden; gibt es ihn nicht mehr, am ersten offenen Schritt ankern.
+  // Ein pausierter Altstand ohne gespeicherte Kennung gilt ebenfalls als verwaist.
+  if (!state.aktiv && (state.cur || state.pausiert)) {
+    const i = state.cur ? STEPS.findIndex(s => s.id === state.cur) : -1;
+    if (i >= 0) state.step = i;
+    else { aktivVerwaist = true; const k = STEPS.findIndex(s => !state.done[s.id] && !state.skipd[s.id]); state.step = k >= 0 ? k : 0; }
   }
 
   // ---- Timer ----
@@ -713,10 +770,12 @@ function flowApp(DATA) {
       if (m > b) return 'tmr w';
       return 'tmr';
     }
-    if (!s.soll) return 'tmr';
+    // Bedarfs-Schritt mit bekannter Zahl offener Aufgaben: Soll = Anzahl x Soll je Ereignis.
+    const es = (s.ev && typeof s.bn === 'number') ? s.soll * s.bn : s.soll;
+    if (!es) return 'tmr';
     const m = ist(s.id) / 60;
-    if (m > s.soll * (1 + pufVon(s.nr))) return 'tmr o';
-    if (m > s.soll) return 'tmr w';
+    if (m > es * (1 + pufVon(s.nr))) return 'tmr o';
+    if (m > es) return 'tmr w';
     return 'tmr';
   };
 
@@ -741,7 +800,9 @@ function flowApp(DATA) {
   function timerStreifen(s) {
     const sollTxt = s.fahrt
       ? `Fahrzeit gesamt<br><b>${fmtM(fahrtIst() / 60)}</b> / ${fmtM(P.fahrzeit || 0)} min`
-      : (s.soll ? (s.ev ? `Soll je Ereignis<br><b>${fmtM(s.soll)} min</b>` : `Soll<br><b>${fmtM(s.soll)} min</b>`) : '');
+      : (s.soll ? (s.ev ? (typeof s.bn === 'number'
+            ? (s.bn > 0 ? `${Number.isInteger(s.bn) ? s.bn : fmtM(s.bn)} offen \u00b7 Soll<br><b>${fmtM(s.soll * s.bn)} min</b>` : `Nichts offen<br><b>\u00fcberspringen</b>`)
+            : `Soll je Ereignis<br><b>${fmtM(s.soll)} min</b>`) : `Soll<br><b>${fmtM(s.soll)} min</b>`) : '');
     const pauseH = state.pausiert
       ? `<div class="pausenote" id="pausenote">\u23f8 PAUSE \u2013 Timer angehalten (${fmtM(pauseIst() / 60)} min) \u00b7 \u25b6 zum Weitermachen</div>`
       : '';
@@ -809,11 +870,14 @@ function flowApp(DATA) {
     let grp = null;
     h += '<h3>Ablauf</h3><div class="steps">';
     STEPS.forEach((s, i) => {
-      const g = s.dev != null ? s.sub : ((s.ort || (s.nr >= 13 && s.nr <= 16)) ? s.sub : (s.fahrt ? null : 'Lager'));
+      const g = s.dev != null ? s.sub : ((s.ort || (s.nr >= 13 && s.nr <= 16) || s.nr === 19) ? s.sub : (s.fahrt ? null : 'Lager'));
       if (g !== grp && g !== null) { h += `</div><div class="sgroup">${esc(g)}</div><div class="steps">`; grp = g; }
       const sec = ist(s.id);
       const cls = 'srow' + (i === state.step ? ' cur' : '') + (state.done[s.id] ? ' ok' : '') + (state.skipd[s.id] ? ' sk' : '');
-      const zeit = sec >= 1 ? fmtClock(sec) : (s.soll ? '~' + fmtM(s.soll) + "'" : '');
+      // Bedarfs-Schritte mit bekannter Zahl offener Aufgaben: Soll = Anzahl x Soll je Ereignis.
+      const bnZ = s.ev && typeof s.bn === 'number';
+      const sollAnz = bnZ ? s.soll * s.bn : s.soll;
+      const zeit = sec >= 1 ? fmtClock(sec) : (sollAnz ? '~' + fmtM(sollAnz) + "'" : (bnZ ? '\u2013' : ''));
       h += `<div class="${cls}" onclick="springe(${i})"><span class="snr">${s.nr}</span><span class="snm">${esc(s.t)}${s.dev == null && s.sub ? '<small>' + esc(s.sub) + '</small>' : ''}</span><span class="szeit">${zeit}</span></div>`;
     });
     h += '</div>';
@@ -824,7 +888,7 @@ function flowApp(DATA) {
   // Zeit-Uebersicht je Punkt: Ist, Soll ohne Puffer, Soll mit Puffer (Selbstkontrolle).
   function zeitZeilen() {
     const zeilen = [];
-    for (let nr = 1; nr <= 18; nr++) {
+    for (let nr = 1; nr <= 20; nr++) {
       const t = T(nr); if (!t) continue;
       const steps = STEPS.filter(s => s.nr === nr);
       if (!steps.length) continue;
@@ -862,7 +926,7 @@ function flowApp(DATA) {
     h += `<div class="srow kopf"><span class="snr"></span><span class="snm">T\u00e4tigkeit</span><span class="z3">Ist</span><span class="z3">Soll</span><span class="z3">+Puffer</span></div>`;
     for (const z of zeilen) {
       const kl = z.ohneSoll ? (z.ist > 0 ? 'istok' : '') : (z.ist > z.mp ? 'istover' : z.ist > z.soll ? 'istwarn' : (z.ist > 0 ? 'istok' : ''));
-      h += `<div class="srow"><span class="snr">${z.nr}</span><span class="snm">${esc(z.name)}${z.annahme ? '<small>Soll = Tour-Annahme</small>' : (z.anz > 1 ? '<small>' + z.anz + ' Schritte</small>' : '')}</span>` +
+      h += `<div class="srow"><span class="snr">${z.nr}</span><span class="snm">${esc(z.name)}${z.annahme ? (BD ? '<small>Soll = offene Aufgaben heute</small>' : '<small>Soll = Tour-Annahme</small>') : (z.anz > 1 ? '<small>' + z.anz + ' Schritte</small>' : '')}</span>` +
         `<span class="z3 ${kl}">${fmtM(z.ist)}</span><span class="z3">${z.ohneSoll ? '\u2013' : fmtM(z.soll)}</span><span class="z3">${z.ohneSoll ? '\u2013' : fmtM(z.mp)}</span></div>`;
     }
     h += `<div class="srow summe"><span class="snr">\u03a3</span><span class="snm">GESAMT (min)</span>` +
@@ -870,7 +934,7 @@ function flowApp(DATA) {
     h += `<div class="srow"><span class="snr">\u23f8</span><span class="snm">Pausen<small>laufen separat, z\u00e4hlen nicht ins Ist</small></span>` +
       `<span class="z3">${fmtM(pauseIst() / 60)}</span><span class="z3">\u2013</span><span class="z3">\u2013</span></div>`;
     h += '</div>';
-    h += '<div class="hint">Ist gr\u00fcn = im Soll \u00b7 gelb = \u00fcber Soll \u00b7 rot = \u00fcber Soll + Puffer. Soll = Sollzeit je T\u00e4tigkeit \u00d7 heutige Mengen; Nr. 4 = Fahrzeit-Budget der Tour; Nr. 8/9 nach Tour-Annahme.</div>';
+    h += '<div class="hint">Ist gr\u00fcn = im Soll \u00b7 gelb = \u00fcber Soll \u00b7 rot = \u00fcber Soll + Puffer. Soll = Sollzeit je T\u00e4tigkeit \u00d7 heutige Mengen; Nr. 4 = Fahrzeit-Budget der Tour; Nr. 8/9 ' + (BD ? 'nach den heute offenen Aufgaben' : 'nach Tour-Annahme') + '.</div>';
     h += '<button class="report z" onclick="reportZeit()">\u23f1 Zeit-Protokoll teilen</button>';
     return h;
   }
@@ -1109,8 +1173,9 @@ function flowApp(DATA) {
         + (s.soll ? ' \u00b7 Soll ' + fmtM(s.soll) + ' min \u00b7 mit Puffer ' + fmtM(s.soll * (1 + pufVon(s.nr))) + ' min' + (s.ev ? ' je Ereignis' : '') : '')
         + (state.skipd[s.id] ? ' \u00b7 \u00fcbersprungen' : (state.done[s.id] ? '' : ' \u00b7 offen')) + '\n';
     }
-    txt += '\nBedarfs-Annahmen je Tour (im Gesamt-Soll): Nr 8 \u00d7 ' + (P.muenz || 0) + ' = ' + fmtM((P.muenz || 0) * sollMin(8, 1))
-      + ' min \u00b7 Nr 9 \u00d7 ' + (P.todos || 0) + ' = ' + fmtM((P.todos || 0) * sollMin(9, 1)) + ' min\n';
+    txt += '\n' + (BD ? 'Bedarfs-Mengen' : 'Bedarfs-Annahmen') + ' je Tour (im Gesamt-Soll): Nr 8 \u00d7 ' + (P.muenz || 0) + ' = ' + fmtM((P.muenz || 0) * sollMin(8, 1))
+      + ' min \u00b7 Nr 9 \u00d7 ' + (P.todos || 0) + ' = ' + fmtM((P.todos || 0) * sollMin(9, 1)) + ' min'
+      + ' \u00b7 Quelle: ' + (BD ? 'offene Aufgaben, Stand ' + String(P.bedarf.stand || '?') : 'Katalog-Annahme') + '\n';
     txt += 'Fahrzeit gesamt: Ist ' + fmtM(fahrtIst() / 60) + ' min \u00b7 Soll ' + fmtM(P.fahrzeit || 0) + ' min \u00b7 mit Puffer ' + fmtM((P.fahrzeit || 0) * (1 + pufVon(4))) + ' min\n';
     txt += 'Pausen gesamt: ' + fmtM(pauseIst() / 60) + ' min (nicht in den Schritt-Zeiten enthalten)\n';
     // Gesamt-Soll mit Puffer = dieselbe Summe wie in der Zeit-Uebersicht (Spalte "+Puffer").
