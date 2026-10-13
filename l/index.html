@@ -93,6 +93,7 @@ h3.warn { color:var(--warn); }
 .mgroup { margin:14px 12px 4px; font-size:14px; font-weight:700; color:var(--acc); }
 .hint { margin:8px 12px 16px; font-size:13px; color:var(--dim); line-height:1.4; }
 .next { position:fixed; left:0; right:0; bottom:0; z-index:6; background:linear-gradient(#141a21f2,#141a21); border-top:1px solid var(--line); padding:7px 10px 10px; display:flex; gap:12px; align-items:stretch; }
+.next.fl { gap:6px; }
 .undo { flex:0 0 auto; align-self:center; padding:13px 14px; font-size:15px; font-weight:800; border-radius:12px; border:1.5px solid var(--dim); background:var(--card); color:var(--fg); }
 .undo:disabled { opacity:.35; }
 .vbtns { display:flex; gap:7px; align-items:center; }
@@ -116,17 +117,20 @@ h3.warn { color:var(--warn); }
 #pinmsg { min-height:18px; margin-top:9px; font-size:13px; color:var(--warn); }
 .nodata { margin:40px 16px; text-align:center; color:var(--dim); font-size:16px; line-height:1.5; }
 /* --- Ablauf-Modus --- */
-.stepcard { margin:10px; padding:14px; background:var(--card); border:2px solid var(--acc); border-radius:16px; }
-.stepcard .shead { display:flex; align-items:center; gap:9px; flex-wrap:wrap; }
-.stepcard .stitle { font-size:19px; font-weight:800; line-height:1.25; }
-.stepcard .ssub { width:100%; font-size:14px; color:var(--dim); margin-top:3px; line-height:1.3; }
-.tmrrow { display:flex; align-items:baseline; gap:14px; margin-top:10px; }
-.tmr { font-size:50px; font-weight:800; line-height:1; font-variant-numeric:tabular-nums; color:var(--ok); }
+/* Schritt-Karte bewusst kompakt: sie steht fest ueber der Ablauf-Liste und soll ihr Platz lassen. */
+.stepcard { margin:6px 10px; padding:8px 12px; background:var(--card); border:2px solid var(--acc); border-radius:14px; }
+.stepcard .shead { display:flex; align-items:center; gap:7px; flex-wrap:wrap; }
+.stepcard .kbadge { font-size:12px; padding:3px 8px; border-radius:8px; }
+.stepcard .stitle { flex:1; min-width:0; font-size:16px; font-weight:800; line-height:1.2; }
+.stepcard .ssub { width:100%; font-size:12px; color:var(--dim); margin-top:1px; line-height:1.25; }
+.stepcard .ssub:empty { display:none; }
+.tmrrow { display:flex; align-items:center; gap:12px; margin-top:4px; }
+.tmr { font-size:30px; font-weight:800; line-height:1; font-variant-numeric:tabular-nums; color:var(--ok); }
 .tmr.w { color:var(--warn); } .tmr.o { color:var(--old); }
-.soll { margin-left:auto; text-align:right; font-size:13px; color:var(--dim); line-height:1.4; }
-.soll b { color:var(--fg); font-size:16px; }
+.soll { margin-left:auto; text-align:right; font-size:12px; color:var(--dim); line-height:1.25; }
+.soll b { color:var(--fg); font-size:14px; }
 .stepbtns { display:flex; gap:10px; margin-top:12px; }
-.skipbtn { flex:1; padding:13px 8px; font-size:15px; font-weight:800; border-radius:12px; background:var(--card); color:var(--dim); border:1.5px solid var(--line); }
+.skipbtn { flex:1; padding:6px 8px; font-size:14px; font-weight:800; border-radius:12px; background:var(--card); color:var(--dim); border:1.5px solid var(--line); }
 .steps { margin:6px 10px; }
 .srow { display:flex; align-items:center; gap:9px; padding:9px 8px; border-bottom:1px solid var(--line); font-size:14px; color:var(--dim); }
 .srow .snr { flex:0 0 auto; min-width:26px; text-align:center; font-weight:800; font-size:12px; color:var(--dim); border:1px solid var(--line); border-radius:7px; padding:3px 4px; }
@@ -138,8 +142,8 @@ h3.warn { color:var(--warn); }
 .srow.ok { opacity:.55; } .srow.ok .snr { color:var(--ok); border-color:var(--ok); }
 .srow.sk { opacity:.4; } .srow.sk .snm { text-decoration:line-through; }
 .sgroup { margin:14px 12px 2px; font-size:13px; font-weight:800; color:var(--acc); letter-spacing:.4px; }
-.navtabs { display:flex; gap:6px; padding:8px 0 4px; }
-.navtab { flex:1; text-align:center; padding:9px 4px; border-radius:12px; background:var(--card); color:var(--dim); font-size:13px; font-weight:700; border:1px solid var(--line); white-space:nowrap; }
+.navtabs { display:flex; gap:6px; padding:6px 0 4px; }
+.navtab { flex:1; text-align:center; padding:7px 4px; border-radius:12px; background:var(--card); color:var(--dim); font-size:13px; font-weight:700; border:1px solid var(--line); white-space:nowrap; }
 .navtab.pkt { color:#ffd54a; border-color:#ffd54a; font-size:15px; font-weight:800; }
 .navtab.pkt.act { background:#ffd54a; color:#3a2a00; }
 .navtab.pkt.neu { animation:pktbump .5s ease-out; }
@@ -161,12 +165,23 @@ h3.warn { color:var(--warn); }
 .stepback { flex:0 0 auto; align-self:center; padding:13px 12px; font-size:15px; font-weight:800; border-radius:12px; border:1.5px solid var(--dim); background:var(--card); color:var(--fg); }
 .stepback:disabled { opacity:.35; }
 .stepback.pause.on { border-color:var(--warn); color:var(--warn); background:#3a2f14; }
-.pausenote { margin-top:8px; padding:8px 10px; border-radius:10px; background:#3a2f14; color:var(--warn); font-weight:800; font-size:14px; text-align:center; }
+/* Knoepfe der Fussleiste mit Beschriftung: Symbol oben, Wort darunter. */
+.ic { display:flex; flex-direction:column; align-items:center; justify-content:center; gap:3px; min-width:46px; padding:6px 4px; line-height:1; }
+.skipbtn.ic { flex:0 0 auto; padding:6px 3px; color:var(--fg); border-color:var(--dim); }
+.fertigbtn span { white-space:nowrap; }
+/* sehr schmale Displays: Knoepfe enger, damit der gruene Knopf lesbar bleibt */
+@media (max-width:339px) { .next.fl { gap:4px; padding-left:6px; padding-right:6px; } .ic { min-width:38px; padding:6px 2px; } .ic small { font-size:9px; letter-spacing:0; } .skipbtn.ic { padding:6px 2px; } .fertigbtn { font-size:14px; padding:6px 2px; } }
+/* unter 300 px ist fuer die Woerter kein Platz: nur Symbole */
+@media (max-width:299px) { .ic small { display:none; } .ic { min-width:34px; } }
+.ic span { font-size:19px; line-height:1; }
+.ic small { font-size:10px; font-weight:700; letter-spacing:.2px; color:var(--dim); white-space:nowrap; }
+.stepback.pause.on small { color:var(--warn); }
+.pausenote { margin-top:5px; padding:5px 10px; border-radius:9px; background:#3a2f14; color:var(--warn); font-weight:800; font-size:13px; text-align:center; }
 .z3 { flex:0 0 auto; min-width:52px; text-align:right; font-variant-numeric:tabular-nums; font-size:13px; }
 .srow.kopf { color:var(--dim); font-size:11px; text-transform:uppercase; letter-spacing:.5px; border-bottom:1.5px solid var(--dim); }
 .srow.summe { color:var(--fg); font-weight:800; border-top:2px solid var(--line); }
 .istwarn { color:var(--warn); } .istover { color:var(--old); } .istok { color:var(--ok); }
-.fertigbtn { flex:1; padding:15px 8px; font-size:19px; font-weight:800; border:0; border-radius:12px; background:var(--ok); color:#03210f; }
+.fertigbtn { flex:1; min-width:0; padding:6px 4px; font-size:15px; line-height:1.15; font-weight:800; border:0; border-radius:12px; background:var(--ok); color:#03210f; }
 .fertigbtn:disabled { opacity:.45; }
 .fillhint { margin:10px 2px 2px; font-size:13px; color:var(--dim); line-height:1.45; }
 /* Schritt-Karte (Timer) bleibt unter dem Kopf stehen; die Ablauf-Liste laeuft darunter mit. */
@@ -430,6 +445,11 @@ function flowApp(DATA) {
   const n2 = (typeof P.todos_auto === 'number') ? P.todos_auto : (P.todos || 0);
   if (n2 > 0) STEPS.push({id: 't2', nr: 2, t: titel(2), sub: (typeof P.todos_auto === 'number') ? ('Für ' + n2 + ' Automaten mit offenen ToDos') : 'Nur bei Bedarf', skip: 1, soll: sollMin(2, n2)});
   STEPS.push({id: 't3', nr: 3, t: titel(3), soll: sollMin(3, 1)});
+  // Kontrollen vor der Abfahrt mit eigener Sollzeit (aus den Tour-Daten, Reihenfolge wie dort).
+  (Array.isArray(P.lager_kontr) ? P.lager_kontr : []).forEach(nr => {
+    if (typeof nr !== 'number' || !T(nr)) return;
+    STEPS.push({id: 't' + nr, nr, t: titel(nr), sub: 'Vor der Abfahrt', soll: sollMin(nr, 1)});
+  });
   // Fester Kontroll-Schritt ohne Soll (nicht Teil der Soll-Tabelle): vor der Abfahrt
   // pruefen, dass alles verschlossen ist und das Licht aus ist.
   // Ab Katalog v11 (P.abschl_vor) ist das Abschliessen vor der Abfahrt die Taetigkeit Nr. 18 mit Sollzeit.
@@ -888,7 +908,9 @@ function flowApp(DATA) {
   // Zeit-Uebersicht je Punkt: Ist, Soll ohne Puffer, Soll mit Puffer (Selbstkontrolle).
   function zeitZeilen() {
     const zeilen = [];
-    for (let nr = 1; nr <= 20; nr++) {
+    // Obergrenze = hoechste Nummer der Tour-Daten (mindestens 20), damit neue Nummern nie fehlen.
+    const nrMax = Object.keys(P.taet || {}).reduce((a, k) => { const n = parseInt(k, 10); return (isFinite(n) && n > a) ? n : a; }, 20);
+    for (let nr = 1; nr <= nrMax; nr++) {
       const t = T(nr); if (!t) continue;
       const steps = STEPS.filter(s => s.nr === nr);
       if (!steps.length) continue;
@@ -1125,11 +1147,16 @@ function flowApp(DATA) {
     const offen = s.mode === 'pack' ? offenPack() : 0;
     const fBtn = s.mode === 'pack' && offen > 0
       ? `<button class="fertigbtn" disabled>Noch ${offen} Positionen \u2026</button>`
-      : `<button class="fertigbtn" onclick="fertig()">\u2713 Fertig \u2013 weiter</button>`;
-    const sBtn = s.skip ? `<button class="skipbtn" style="flex:0 0 auto" onclick="skipStep()">\u00dcberspringen</button>` : '';
-    const uBtn = (s.mode === 'pack' || s.mode === 'fill') ? `<button class="undo" id="undo" onclick="undo()" ${state.hist.length ? '' : 'disabled'}>\u21a9</button>` : '';
-    const pBtn = `<button class="stepback pause${state.pausiert ? ' on' : ''}" onclick="togglePause()">${state.pausiert ? '\u25b6' : '\u23f8'}</button>`;
-    document.getElementById('botbar').innerHTML = `<button class="stepback" onclick="stepZurueck()" ${state.step ? '' : 'disabled'}>\u2039</button>${pBtn}${uBtn}${sBtn}${fBtn}`;
+      : `<button class="fertigbtn" onclick="fertig()"><span>\u2713 Fertig</span> <span>\u2013 weiter</span></button>`;
+    const sBtn = s.skip ? `<button class="skipbtn ic" style="flex:0 0 auto" onclick="skipStep()"><span>\u21b7</span><small>\u00dcberspringen</small></button>` : '';
+    // Rueckgaengig steht in JEDEM Schritt an derselben Stelle (einheitliche Fussleiste). Es nimmt
+    // nur Positions-Haken zurueck - ausserhalb der Schritte mit Positionsliste ist es deshalb
+    // gesperrt, sonst wuerde unsichtbar ein Haken einer anderen Ansicht zurueckgenommen.
+    const uAn = (s.mode === 'pack' || s.mode === 'fill') && state.hist.length;
+    const uBtn = `<button class="undo ic" id="undo" onclick="undo()" ${uAn ? '' : 'disabled'}><span>\u21a9</span><small>R\u00fcckg\u00e4ngig</small></button>`;
+    const pBtn = `<button class="stepback pause ic${state.pausiert ? ' on' : ''}" onclick="togglePause()"><span>${state.pausiert ? '\u25b6' : '\u23f8'}</span><small>${state.pausiert ? 'Weiter' : 'Pause'}</small></button>`;
+    document.getElementById('botbar').classList.add('fl');
+    document.getElementById('botbar').innerHTML = `<button class="stepback ic" onclick="stepZurueck()" ${state.step ? '' : 'disabled'}><span>\u2039</span><small>Zur\u00fcck</small></button>${pBtn}${uBtn}${sBtn}${fBtn}`;
     save();
     leisteZentrieren();
     scrollNach(y0);
