@@ -77,6 +77,8 @@ li .psub { display:block; font-size:11px; color:var(--warn); margin-top:2px; }
 .sendinfo { margin:10px 12px; padding:12px 13px; background:var(--card); border:1px solid var(--line); border-radius:12px; font-size:14px; line-height:1.4; }
 .sendst { margin:-6px 14px 14px; font-size:13px; color:var(--dim); display:flex; justify-content:space-between; gap:10px; align-items:center; }
 .sendst .ok { color:var(--ok); font-weight:700; }
+.sendinfo.frage { border:2px solid var(--ok); font-size:15px; font-weight:700; }
+.fragebtn { display:flex; gap:8px; } .fragebtn .report { margin:10px 0 0; flex:1; width:auto; padding:12px; font-size:15px; }
 .altlink { background:none; border:0; padding:4px 0; color:var(--acc); font-size:13px; text-decoration:underline; }
 ul { list-style:none; margin:4px 10px; padding:0; }
 li { display:flex; align-items:center; gap:11px; padding:13px 11px; border-bottom:1px solid var(--line); font-size:16px; }
@@ -365,7 +367,9 @@ function pickLesen(el, qty) {
 // Primaer per E-Mail: Das Mail-Programm oeffnet sich mit Empfaenger, Betreff und Text. Die
 // Adresse steht nur in den verschluesselten Daten (DATA.mail), nie im oeffentlichen Quelltext.
 // Ohne Adresse (aeltere Daten) oder auf Wunsch (alt = true): Teilen-Menue, sonst Zwischenablage.
-// Rueckgabe true = Mail geoeffnet bzw. geteilt/kopiert; false = abgebrochen/nicht moeglich.
+// Rueckgabe 'mail' = Mail-Programm geoeffnet (ob abgeschickt, ist nicht erkennbar -> Rueckfrage),
+// 'geteilt' = ueber das Teilen-Menue versendet, 'kopiert' = nur Zwischenablage, false = abgebrochen.
+// Als "gesendet" zaehlt nur 'geteilt' oder 'mail' mit bestaetigter Rueckfrage (Nutzerentscheidung 2026-10-14).
 const MAILTO_MAX = 16000;
 function meldeAdresse(DATA) {
   return (typeof DATA.mail === 'string' && /^[^\s@<>"?&]+@[^\s@<>"?&]+\.[a-z]{2,}$/i.test(DATA.mail)) ? DATA.mail : '';
@@ -385,15 +389,15 @@ async function sendeMeldung(DATA, titel, txt, alt) {
     if (url.length <= MAILTO_MAX) {
       window.location.href = url;
       info('E-Mail ge\u00f6ffnet \u2013 dort auf Senden tippen');
-      return true;
+      return 'mail';
     }
     info('Bericht zu lang f\u00fcr den E-Mail-Knopf \u2013 bitte \u00fcber Teilen an ' + an + ' senden');
   }
-  try { await navigator.share({title: titel, text: txt}); return true; }
+  try { await navigator.share({title: titel, text: txt}); return 'geteilt'; }
   catch (e) {
     // Bewusst abgebrochenes Teilen-Menue: nichts kopieren, nichts werten.
     if (e && e.name === 'AbortError') return false;
-    try { await navigator.clipboard.writeText(txt); info('Meldung kopiert \u2013 in Chat/Mail einf\u00fcgen'); return true; }
+    try { await navigator.clipboard.writeText(txt); info('Meldung kopiert \u2013 in Chat/Mail einf\u00fcgen'); return 'kopiert'; }
     catch (e2) { info('Senden nicht m\u00f6glich \u2013 bitte Screenshot senden'); return false; }
   }
 }
@@ -1013,10 +1017,10 @@ function flowApp(DATA) {
   // Stand, zu dem gemeldet wurde: aendert sich danach etwas (andere Fehlmengen, weitere
   // Schritte), gilt die Meldung nicht mehr als aktuell und muss erneut gesendet werden.
   // Signaturen = alles, was im jeweiligen Bericht steht (sonst bliebe "gesendet" nach einer Aenderung
-  // stehen): Fehlt = Fehlpositionen + Zahl nicht abgehakter Positionen; Zeit = Schrittstatus,
-  // volle Minuten je Schritt und Pausenminuten.
+  // stehen): Fehlt = Fehlpositionen + Zahl nicht abgehakter Positionen; Zeit = Schrittstatus und
+  // Zeiten je Schritt sowie Pausen in Zehntelminuten (= Genauigkeit des Berichts, fmtM).
   const fehltSig = () => missList().map(e => k(e.m, e.it) + ':' + e.miss).join('|') + '#' + offenPack();
-  const zeitSig = () => STEPS.map(s => (state.done[s.id] ? 'd' : state.skipd[s.id] ? 's' : 'o') + Math.floor(ist(s.id) / 60)).join(',') + '|p' + Math.floor(pauseIst() / 60);
+  const zeitSig = () => STEPS.map(s => (state.done[s.id] ? 'd' : state.skipd[s.id] ? 's' : 'o') + fmtM(ist(s.id) / 60)).join(',') + '|p' + fmtM(pauseIst() / 60);
   function punkte() {
     const pflicht = STEPS.filter(s => !s.skip);
     const zeitS = pflicht.filter(s => !s.fahrt && s.soll > 0);
@@ -1050,13 +1054,16 @@ function flowApp(DATA) {
   // Senden-Ansicht (state.view = 4): beide Meldungen an einer festen, gut sichtbaren Stelle.
   // Senden geht jederzeit - auch mit offenen Schritten/Positionen (stehen im Bericht als "offen").
   function sendenAnsicht() {
+    const mo = state.mailOffen;
+    const frage = mo ? `<div class="sendinfo frage">\u2709 Hast du die E-Mail <b>${mo.art === 'fehlt' ? 'Fehlt-Liste' : 'Zeit-Protokoll'}</b> abgeschickt?` +
+      '<div class="fragebtn"><button class="report" onclick="mailBestaetigt(true)">\u2713 Ja, abgeschickt</button><button class="report z" onclick="mailBestaetigt(false)">Nein</button></div></div>' : '';
     const ml = missList(), mc = ml.length, an = meldeAdresse(DATA);
     const offenS = STEPS.filter(s => !state.done[s.id] && !state.skipd[s.id]).length, offenP = offenPack();
     const fehltOk = mc && state.meld.fehlt === fehltSig();
     const zeitOk = !!state.meld.zeit && state.meld.zeit === zeitSig();
     const alt = fn => an ? `<button class="altlink" onclick="${fn}(true)">andere App \u2026</button>` : '';
     const stand = (ok, alt0) => ok ? '<span class="ok">\u2713 gesendet</span>' : (alt0 ? 'ge\u00e4ndert \u2013 bitte erneut senden' : 'noch nicht gesendet');
-    let h = '<h3>Listen senden</h3>';
+    let h = '<h3>Listen senden</h3>' + frage;
     h += `<div class="sendinfo">${sendeHinweis(DATA)}<br><br>Senden geht <b>jederzeit</b> \u2013 auch wenn noch nicht alles abgehakt ist.` +
       (offenS ? ` Gerade offen: <b>${offenS} Schritt${offenS === 1 ? '' : 'e'}</b>${offenP ? ` und <b>${offenP} Position${offenP === 1 ? '' : 'en'}</b>` : ''} \u2013 steht im Bericht als \u201eoffen\u201c.` : '') + '</div>';
     if (mc) {
@@ -1268,7 +1275,7 @@ function flowApp(DATA) {
     txt += '\nGesamt: ' + ml.length + ' Position(en) mit Fehlmenge \u2013 bitte Bestand korrigieren.';
     txt += offenHinweis();
     const sig = fehltSig();
-    if (await teile('Fehlt-Meldung Packliste ' + DATA.tour + ' ' + DATA.datum, txt, alt)) { state.meld.fehlt = sig; save(); render(); }
+    meldeErgebnis('fehlt', sig, await teile('Fehlt-Meldung Packliste ' + DATA.tour + ' ' + DATA.datum, txt, alt));
   };
   window.reportZeit = async (alt) => {
     let txt = 'ZEIT-PROTOKOLL Lagerliste ' + DATA.tour + ' ' + DATA.datum + '\n';
@@ -1300,9 +1307,23 @@ function flowApp(DATA) {
     const sollMitPuffer = zeitZeilen().reduce((a, z) => a + z.mp, 0);
     txt += 'GESAMT: Ist ' + fmtM(istGes() / 60) + ' min \u00b7 Soll ' + fmtM(sollGesMin) + ' min \u00b7 mit Puffer ' + fmtM(sollMitPuffer) + ' min\n';
     const stand = zeitSig();
-    if (await teile('Zeit-Protokoll Lagerliste ' + DATA.tour + ' ' + DATA.datum, txt, alt)) { state.meld.zeit = stand; save(); render(); }
+    meldeErgebnis('zeit', stand, await teile('Zeit-Protokoll Lagerliste ' + DATA.tour + ' ' + DATA.datum, txt, alt));
   };
-  // Rueckgabe true = Mail geoeffnet, geteilt bzw. kopiert; false = abgebrochen/nicht moeglich.
+  // Nur echtes Teilen zaehlt sofort als gesendet. Nach dem Oeffnen des Mail-Programms fragt die
+  // Senden-Ansicht "Abgeschickt?" (state.mailOffen); erst "Ja" zaehlt. Kopieren zaehlt nie.
+  function meldeErgebnis(art, sig, r) {
+    if (r === 'geteilt') { state.meld[art] = sig; state.mailOffen = null; }
+    else if (r === 'mail') { state.mailOffen = {art, sig}; state.view = 4; springTop = true; }
+    else return;
+    save(); render();
+  }
+  window.mailBestaetigt = ja => {
+    const o = state.mailOffen;
+    state.mailOffen = null;
+    if (ja && o && (o.art === 'fehlt' || o.art === 'zeit')) state.meld[o.art] = o.sig;
+    save(); render();
+  };
+  // Rueckgabe wie sendeMeldung: 'mail' / 'geteilt' / 'kopiert' / false (Auswertung in meldeErgebnis).
   const teile = (titel, txt, alt) => sendeMeldung(DATA, titel, txt, alt);
 
   // ---- Sprachausgabe / -steuerung ----
