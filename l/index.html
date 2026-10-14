@@ -366,6 +366,7 @@ function pickLesen(el, qty) {
 // Adresse steht nur in den verschluesselten Daten (DATA.mail), nie im oeffentlichen Quelltext.
 // Ohne Adresse (aeltere Daten) oder auf Wunsch (alt = true): Teilen-Menue, sonst Zwischenablage.
 // Rueckgabe true = Mail geoeffnet bzw. geteilt/kopiert; false = abgebrochen/nicht moeglich.
+const MAILTO_MAX = 16000;
 function meldeAdresse(DATA) {
   return (typeof DATA.mail === 'string' && /^[^\s@<>"?&]+@[^\s@<>"?&]+\.[a-z]{2,}$/i.test(DATA.mail)) ? DATA.mail : '';
 }
@@ -378,10 +379,15 @@ async function sendeMeldung(DATA, titel, txt, alt) {
   const info = t => { const el = document.getElementById('heard'); if (el) el.textContent = t; };
   const an = meldeAdresse(DATA);
   if (an && !alt) {
-    window.location.href = 'mailto:' + an + '?subject=' + encodeURIComponent(titel) +
+    const url = 'mailto:' + an + '?subject=' + encodeURIComponent(titel) +
       '&body=' + encodeURIComponent(txt.replace(/\r?\n/g, '\r\n'));
-    info('E-Mail ge\u00f6ffnet \u2013 dort auf Senden tippen');
-    return true;
+    // Sehr lange mailto-Links kuerzen manche Mail-Apps still -> dann lieber das Teilen-Menue.
+    if (url.length <= MAILTO_MAX) {
+      window.location.href = url;
+      info('E-Mail ge\u00f6ffnet \u2013 dort auf Senden tippen');
+      return true;
+    }
+    info('Bericht zu lang f\u00fcr den E-Mail-Knopf \u2013 bitte \u00fcber Teilen an ' + an + ' senden');
   }
   try { await navigator.share({title: titel, text: txt}); return true; }
   catch (e) {
@@ -1006,8 +1012,11 @@ function flowApp(DATA) {
   const PKT = {soll: 10, puffer: 5, fahrt: 20, schritt: 2, tour: 50, meld: 25};
   // Stand, zu dem gemeldet wurde: aendert sich danach etwas (andere Fehlmengen, weitere
   // Schritte), gilt die Meldung nicht mehr als aktuell und muss erneut gesendet werden.
-  const fehltSig = () => missList().map(e => k(e.m, e.it) + ':' + e.miss).join('|');
-  const zeitSig = () => 'n' + STEPS.filter(s => state.done[s.id] || state.skipd[s.id]).length;
+  // Signaturen = alles, was im jeweiligen Bericht steht (sonst bliebe "gesendet" nach einer Aenderung
+  // stehen): Fehlt = Fehlpositionen + Zahl nicht abgehakter Positionen; Zeit = Schrittstatus,
+  // volle Minuten je Schritt und Pausenminuten.
+  const fehltSig = () => missList().map(e => k(e.m, e.it) + ':' + e.miss).join('|') + '#' + offenPack();
+  const zeitSig = () => STEPS.map(s => (state.done[s.id] ? 'd' : state.skipd[s.id] ? 's' : 'o') + Math.floor(ist(s.id) / 60)).join(',') + '|p' + Math.floor(pauseIst() / 60);
   function punkte() {
     const pflicht = STEPS.filter(s => !s.skip);
     const zeitS = pflicht.filter(s => !s.fahrt && s.soll > 0);
