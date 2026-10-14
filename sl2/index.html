@@ -79,6 +79,7 @@ li .psub { display:block; font-size:11px; color:var(--warn); margin-top:2px; }
 .sendst .ok { color:var(--ok); font-weight:700; }
 .sendinfo.frage { border:2px solid var(--ok); font-size:15px; font-weight:700; }
 .fragebtn { display:flex; gap:8px; } .fragebtn .report { margin:10px 0 0; flex:1; width:auto; padding:12px; font-size:15px; }
+.report:disabled { opacity:.4; }
 .altlink { background:none; border:0; padding:4px 0; color:var(--acc); font-size:13px; text-decoration:underline; }
 ul { list-style:none; margin:4px 10px; padding:0; }
 li { display:flex; align-items:center; gap:11px; padding:13px 11px; border-bottom:1px solid var(--line); font-size:16px; }
@@ -1017,10 +1018,11 @@ function flowApp(DATA) {
   // Stand, zu dem gemeldet wurde: aendert sich danach etwas (andere Fehlmengen, weitere
   // Schritte), gilt die Meldung nicht mehr als aktuell und muss erneut gesendet werden.
   // Signaturen = alles, was im jeweiligen Bericht steht (sonst bliebe "gesendet" nach einer Aenderung
-  // stehen): Fehlt = Fehlpositionen + Zahl nicht abgehakter Positionen; Zeit = Schrittstatus und
-  // Zeiten je Schritt sowie Pausen in Zehntelminuten (= Genauigkeit des Berichts, fmtM).
+  // stehen): Fehlt = Fehlpositionen + Zahl nicht abgehakter Positionen; Zeit = Pruefsumme ueber den
+  // vollstaendigen Berichtstext (Omsdex Runde 3).
+  const textSig = t => { let h = 5381; for (let i = 0; i < t.length; i++) h = ((h * 33) ^ t.charCodeAt(i)) >>> 0; return 'v2-' + h.toString(16) + '-' + t.length; };
   const fehltSig = () => missList().map(e => k(e.m, e.it) + ':' + e.miss).join('|') + '#' + offenPack();
-  const zeitSig = () => STEPS.map(s => (state.done[s.id] ? 'd' : state.skipd[s.id] ? 's' : 'o') + fmtM(ist(s.id) / 60)).join(',') + '|p' + fmtM(pauseIst() / 60);
+  const zeitSig = () => textSig(zeitBericht());
   function punkte() {
     const pflicht = STEPS.filter(s => !s.skip);
     const zeitS = pflicht.filter(s => !s.fahrt && s.soll > 0);
@@ -1067,13 +1069,13 @@ function flowApp(DATA) {
     h += `<div class="sendinfo">${sendeHinweis(DATA)}<br><br>Senden geht <b>jederzeit</b> \u2013 auch wenn noch nicht alles abgehakt ist.` +
       (offenS ? ` Gerade offen: <b>${offenS} Schritt${offenS === 1 ? '' : 'e'}</b>${offenP ? ` und <b>${offenP} Position${offenP === 1 ? '' : 'en'}</b>` : ''} \u2013 steht im Bericht als \u201eoffen\u201c.` : '') + '</div>';
     if (mc) {
-      h += `<button class="report" onclick="reportFehlt()">\u26a0 Fehlt-Liste senden (${mc})</button>`;
-      h += `<div class="sendst"><span>${stand(fehltOk, state.meld.fehlt)}</span>${alt('reportFehlt')}</div>`;
+      h += `<button class="report" onclick="reportFehlt()"${mo ? ' disabled' : ''}>\u26a0 Fehlt-Liste senden (${mc})</button>`;
+      h += `<div class="sendst"><span>${stand(fehltOk, state.meld.fehlt)}</span>${mo ? '' : alt('reportFehlt')}</div>`;
     } else {
       h += '<div class="sendinfo">\u2705 Nichts als fehlend markiert \u2013 keine Fehlt-Liste n\u00f6tig.</div>';
     }
-    h += '<button class="report z" onclick="reportZeit()">\u23f1 Zeit-Protokoll senden</button>';
-    h += `<div class="sendst"><span>${stand(zeitOk, state.meld.zeit)}</span>${alt('reportZeit')}</div>`;
+    h += `<button class="report z" onclick="reportZeit()"${mo ? ' disabled' : ''}>\u23f1 Zeit-Protokoll senden</button>`;
+    h += `<div class="sendst"><span>${stand(zeitOk, state.meld.zeit)}</span>${mo ? '' : alt('reportZeit')}</div>`;
     return h;
   }
   function punkteAnsicht() {
@@ -1264,6 +1266,7 @@ function flowApp(DATA) {
   // und "Gesamt:" - die Fehlt-Meldung wird maschinell gelesen, diese Zeile darf dort nichts ausloesen.
   const offenHinweis = () => { const n = offenPack(); return n ? '\nHinweis: ' + n + ' Position(en) noch nicht abgehakt \u2013 nicht in dieser Meldung enthalten.' : ''; };
   window.reportFehlt = async (alt) => {
+    if (state.mailOffen) { zeigeView(4); return; }  // erst die offene Rueckfrage beantworten
     const ml = missList();
     if (!ml.length) return;
     let txt = 'FEHLT-MELDUNG Packliste ' + DATA.tour + ' ' + DATA.datum + '\n';
@@ -1277,7 +1280,8 @@ function flowApp(DATA) {
     const sig = fehltSig();
     meldeErgebnis('fehlt', sig, await teile('Fehlt-Meldung Packliste ' + DATA.tour + ' ' + DATA.datum, txt, alt));
   };
-  window.reportZeit = async (alt) => {
+  // Text des Zeit-Protokolls (auch Grundlage der Gesendet-Signatur zeitSig, Omsdex Runde 3).
+  function zeitBericht() {
     let txt = 'ZEIT-PROTOKOLL Lagerliste ' + DATA.tour + ' ' + DATA.datum + '\n';
     txt += 'Sollzeiten: ' + (P.quelle || '?') + ' \u00b7 Blatt ' + (P.blatt || '?') + ' \u00b7 Mengen aus dem Run des Tages\n';
     const offenS = STEPS.filter(s => !state.done[s.id] && !state.skipd[s.id]).length;
@@ -1306,8 +1310,12 @@ function flowApp(DATA) {
     // Gesamt-Soll mit Puffer = dieselbe Summe wie in der Zeit-Uebersicht (Spalte "+Puffer").
     const sollMitPuffer = zeitZeilen().reduce((a, z) => a + z.mp, 0);
     txt += 'GESAMT: Ist ' + fmtM(istGes() / 60) + ' min \u00b7 Soll ' + fmtM(sollGesMin) + ' min \u00b7 mit Puffer ' + fmtM(sollMitPuffer) + ' min\n';
-    const stand = zeitSig();
-    meldeErgebnis('zeit', stand, await teile('Zeit-Protokoll Lagerliste ' + DATA.tour + ' ' + DATA.datum, txt, alt));
+    return txt;
+  }
+  window.reportZeit = async (alt) => {
+    if (state.mailOffen) { zeigeView(4); return; }  // erst die offene Rueckfrage beantworten
+    const txt = zeitBericht();
+    meldeErgebnis('zeit', textSig(txt), await teile('Zeit-Protokoll Lagerliste ' + DATA.tour + ' ' + DATA.datum, txt, alt));
   };
   // Nur echtes Teilen zaehlt sofort als gesendet. Nach dem Oeffnen des Mail-Programms fragt die
   // Senden-Ansicht "Abgeschickt?" (state.mailOffen); erst "Ja" zaehlt. Kopieren zaehlt nie.
