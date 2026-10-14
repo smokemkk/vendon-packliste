@@ -74,6 +74,10 @@ li .psub { display:block; font-size:11px; color:var(--warn); margin-top:2px; }
 .alldone.w { border-color:var(--warn); color:var(--warn); font-size:17px; }
 .report { display:block; width:calc(100% - 24px); margin:14px 12px; padding:15px; font-size:17px; font-weight:800; border:0; border-radius:12px; background:var(--warn); color:#3a2a00; }
 .report.z { background:#12304a; color:var(--acc); border:1.5px solid var(--acc); }
+.sendinfo { margin:10px 12px; padding:12px 13px; background:var(--card); border:1px solid var(--line); border-radius:12px; font-size:14px; line-height:1.4; }
+.sendst { margin:-6px 14px 14px; font-size:13px; color:var(--dim); display:flex; justify-content:space-between; gap:10px; align-items:center; }
+.sendst .ok { color:var(--ok); font-weight:700; }
+.altlink { background:none; border:0; padding:4px 0; color:var(--acc); font-size:13px; text-decoration:underline; }
 ul { list-style:none; margin:4px 10px; padding:0; }
 li { display:flex; align-items:center; gap:11px; padding:13px 11px; border-bottom:1px solid var(--line); font-size:16px; }
 li .sel { font-size:23px; font-weight:800; min-width:58px; font-variant-numeric:tabular-nums; }
@@ -162,6 +166,9 @@ h3.warn { color:var(--warn); }
 .navtab.act { background:var(--acc); color:#04283d; border-color:var(--acc); }
 .navtab.warn { color:var(--warn); border-color:var(--warn); }
 .navtab.warn.act { background:var(--warn); color:#3a2a00; }
+.navtab.send { color:var(--ok); border-color:var(--ok); }
+.navtab.send.act { background:var(--ok); color:#03210f; }
+@media (max-width: 400px) { .navtabs { gap:4px; } .navtab { padding:7px 2px; font-size:12px; } .navtab.pkt { font-size:13px; } }
 .stepback { flex:0 0 auto; align-self:center; padding:13px 12px; font-size:15px; font-weight:800; border-radius:12px; border:1.5px solid var(--dim); background:var(--card); color:var(--fg); }
 .stepback:disabled { opacity:.35; }
 .stepback.pause.on { border-color:var(--warn); color:var(--warn); background:#3a2f14; }
@@ -354,6 +361,37 @@ function pickLesen(el, qty) {
   return v;
 }
 
+// ==================== Gemeinsames: Meldungen senden ====================
+// Primaer per E-Mail: Das Mail-Programm oeffnet sich mit Empfaenger, Betreff und Text. Die
+// Adresse steht nur in den verschluesselten Daten (DATA.mail), nie im oeffentlichen Quelltext.
+// Ohne Adresse (aeltere Daten) oder auf Wunsch (alt = true): Teilen-Menue, sonst Zwischenablage.
+// Rueckgabe true = Mail geoeffnet bzw. geteilt/kopiert; false = abgebrochen/nicht moeglich.
+function meldeAdresse(DATA) {
+  return (typeof DATA.mail === 'string' && /^[^\s@<>"?&]+@[^\s@<>"?&]+\.[a-z]{2,}$/i.test(DATA.mail)) ? DATA.mail : '';
+}
+function sendeHinweis(DATA) {
+  const an = meldeAdresse(DATA);
+  return an ? '\u201eSenden\u201c \u00f6ffnet dein E-Mail-Programm \u2013 Empf\u00e4nger ' + an + ', Betreff und Text sind schon eingetragen, dort nur noch auf Senden tippen.'
+    : '\u201eSenden\u201c \u00f6ffnet das Teilen-Men\u00fc \u2013 die Liste bitte wie besprochen senden.';
+}
+async function sendeMeldung(DATA, titel, txt, alt) {
+  const info = t => { const el = document.getElementById('heard'); if (el) el.textContent = t; };
+  const an = meldeAdresse(DATA);
+  if (an && !alt) {
+    window.location.href = 'mailto:' + an + '?subject=' + encodeURIComponent(titel) +
+      '&body=' + encodeURIComponent(txt.replace(/\r?\n/g, '\r\n'));
+    info('E-Mail ge\u00f6ffnet \u2013 dort auf Senden tippen');
+    return true;
+  }
+  try { await navigator.share({title: titel, text: txt}); return true; }
+  catch (e) {
+    // Bewusst abgebrochenes Teilen-Menue: nichts kopieren, nichts werten.
+    if (e && e.name === 'AbortError') return false;
+    try { await navigator.clipboard.writeText(txt); info('Meldung kopiert \u2013 in Chat/Mail einf\u00fcgen'); return true; }
+    catch (e2) { info('Senden nicht m\u00f6glich \u2013 bitte Screenshot senden'); return false; }
+  }
+}
+
 function startApp(DATA) {
   if (DATA.plan && DATA.machines && DATA.machines.length) { flowApp(DATA); }
   else { legacyApp(DATA); }
@@ -383,7 +421,7 @@ function flowApp(DATA) {
   if (!state.zeit) state.zeit = {};
   if (typeof state.tab !== 'number') state.tab = 0;      // Kisten-Tab im Pack-Schritt
   if (typeof state.step !== 'number') state.step = 0;    // Index in STEPS
-  if (typeof state.view !== 'number') state.view = 0;    // 0 = Ablauf, 1 = Fehlt, 2 = Zeit
+  if (typeof state.view !== 'number' || state.view < 0 || state.view > 4) state.view = 0;  // 0 = Ablauf, 1 = Fehlt, 2 = Zeit, 3 = Punkte, 4 = Senden
   if (typeof state.pauseSum !== 'number') state.pauseSum = 0;  // Pausen-Sekunden gesamt
   if (!state.meld || typeof state.meld !== 'object') state.meld = {};  // gesendete Meldungen (fuer die Punkte)
   // state.cur = stabile Kennung des angezeigten Schritts (state.step ist nur ein Index und
@@ -901,7 +939,7 @@ function flowApp(DATA) {
       h += `<div class="${cls}" onclick="springe(${i})"><span class="snr">${s.nr}</span><span class="snm">${esc(s.t)}${s.dev == null && s.sub ? '<small>' + esc(s.sub) + '</small>' : ''}</span><span class="szeit">${zeit}</span></div>`;
     });
     h += '</div>';
-    h += '<button class="report z" onclick="reportZeit()">\u23f1 Zeit-Protokoll teilen</button>';
+    h += '<button class="report z" onclick="reportZeit()">\u23f1 Zeit-Protokoll senden</button>';
     return h;
   }
 
@@ -957,7 +995,7 @@ function flowApp(DATA) {
       `<span class="z3">${fmtM(pauseIst() / 60)}</span><span class="z3">\u2013</span><span class="z3">\u2013</span></div>`;
     h += '</div>';
     h += '<div class="hint">Ist gr\u00fcn = im Soll \u00b7 gelb = \u00fcber Soll \u00b7 rot = \u00fcber Soll + Puffer. Soll = Sollzeit je T\u00e4tigkeit \u00d7 heutige Mengen; Nr. 4 = Fahrzeit-Budget der Tour; Nr. 8/9 ' + (BD ? 'nach den heute offenen Aufgaben' : 'nach Tour-Annahme') + '.</div>';
-    h += '<button class="report z" onclick="reportZeit()">\u23f1 Zeit-Protokoll teilen</button>';
+    h += '<button class="report z" onclick="reportZeit()">\u23f1 Zeit-Protokoll senden</button>';
     return h;
   }
 
@@ -999,6 +1037,28 @@ function flowApp(DATA) {
     const zeitOk = !!state.meld.zeit && state.meld.zeit === zeitSig();
     rows.push({t: 'Zeit-Protokoll gesendet', sub: zeitOk ? 'gesendet' : (state.meld.zeit ? 'Stand ge\u00e4ndert \u2013 erneut senden' : 'noch senden'), p: zeitOk ? PKT.meld : 0, max: PKT.meld});
     return {rows, sum: rows.reduce((a, r) => a + r.p, 0), max: rows.reduce((a, r) => a + r.max, 0)};
+  }
+  // Senden-Ansicht (state.view = 4): beide Meldungen an einer festen, gut sichtbaren Stelle.
+  // Senden geht jederzeit - auch mit offenen Schritten/Positionen (stehen im Bericht als "offen").
+  function sendenAnsicht() {
+    const ml = missList(), mc = ml.length, an = meldeAdresse(DATA);
+    const offenS = STEPS.filter(s => !state.done[s.id] && !state.skipd[s.id]).length, offenP = offenPack();
+    const fehltOk = mc && state.meld.fehlt === fehltSig();
+    const zeitOk = !!state.meld.zeit && state.meld.zeit === zeitSig();
+    const alt = fn => an ? `<button class="altlink" onclick="${fn}(true)">andere App \u2026</button>` : '';
+    const stand = (ok, alt0) => ok ? '<span class="ok">\u2713 gesendet</span>' : (alt0 ? 'ge\u00e4ndert \u2013 bitte erneut senden' : 'noch nicht gesendet');
+    let h = '<h3>Listen senden</h3>';
+    h += `<div class="sendinfo">${sendeHinweis(DATA)}<br><br>Senden geht <b>jederzeit</b> \u2013 auch wenn noch nicht alles abgehakt ist.` +
+      (offenS ? ` Gerade offen: <b>${offenS} Schritt${offenS === 1 ? '' : 'e'}</b>${offenP ? ` und <b>${offenP} Position${offenP === 1 ? '' : 'en'}</b>` : ''} \u2013 steht im Bericht als \u201eoffen\u201c.` : '') + '</div>';
+    if (mc) {
+      h += `<button class="report" onclick="reportFehlt()">\u26a0 Fehlt-Liste senden (${mc})</button>`;
+      h += `<div class="sendst"><span>${stand(fehltOk, state.meld.fehlt)}</span>${alt('reportFehlt')}</div>`;
+    } else {
+      h += '<div class="sendinfo">\u2705 Nichts als fehlend markiert \u2013 keine Fehlt-Liste n\u00f6tig.</div>';
+    }
+    h += '<button class="report z" onclick="reportZeit()">\u23f1 Zeit-Protokoll senden</button>';
+    h += `<div class="sendst"><span>${stand(zeitOk, state.meld.zeit)}</span>${alt('reportZeit')}</div>`;
+    return h;
   }
   function punkteAnsicht() {
     const pt = punkte();
@@ -1080,7 +1140,8 @@ function flowApp(DATA) {
       `<div class="navtabs"><div class="navtab${state.view === 0 ? ' act' : ''}" onclick="zeigeView(0)">Ablauf</div>` +
       `<div class="navtab${state.view === 2 ? ' act' : ''}" onclick="zeigeView(2)">\u23f1 Zeit</div>` +
       `<div class="navtab pkt${state.view === 3 ? ' act' : ''}${pktPlus ? ' neu' : ''}" onclick="zeigeView(3)">\u2605 ${pktJetzt}</div>` +
-      `<div class="navtab warn${state.view === 1 ? ' act' : ''}" onclick="zeigeView(1)">\u26a0 Fehlt (${mc})</div></div>`;
+      `<div class="navtab warn${state.view === 1 ? ' act' : ''}" onclick="zeigeView(1)">\u26a0 Fehlt (${mc})</div>` +
+      `<div class="navtab send${state.view === 4 ? ' act' : ''}" onclick="zeigeView(4)">\ud83d\udce4 Senden</div></div>`;
     const stkGep = DATA.machines.reduce((n, m) => n + m.items.reduce((a, it) => { const s2 = st(k(m, it)); return a + (s2 === 1 ? it.qty : s2 === 3 ? Math.min(partOf(k(m, it)), it.qty) : 0); }, 0), 0);
     const stkFehlt = missList().reduce((a, e) => a + e.miss, 0);
     document.getElementById('prog').innerHTML = `<b>${stkGep}</b> / ${stkGes} St\u00fcck${stkFehlt ? ` \u00b7 <i>${stkFehlt} \u26a0</i>` : ''}`;
@@ -1099,8 +1160,8 @@ function flowApp(DATA) {
           const s2 = st(k(e.m, e.it));
           h += row(e.m, e.it, 'miss', s2 === 3 ? '\u00bd' : '!', false, '\u00d7 ' + e.miss, s2 === 3 ? (partOf(k(e.m, e.it)) + ' gepackt \u00b7 Rest fehlt') : '');
         }
-        h += '</ul><button class="report" onclick="reportFehlt()">\ud83d\udce4 Fehlt-Liste melden</button>';
-        h += '<div class="hint">\u201eMelden\u201c \u00f6ffnet das Teilen-Men\u00fc \u2013 die Liste bitte wie besprochen senden, damit der Bestand korrigiert wird. Antippen macht eine Markierung r\u00fcckg\u00e4ngig.</div>';
+        h += '</ul><button class="report" onclick="reportFehlt()">\ud83d\udce4 Fehlt-Liste senden</button>';
+        h += '<div class="hint">' + sendeHinweis(DATA) + ' Antippen macht eine Markierung r\u00fcckg\u00e4ngig.</div>';
       } else {
         h += '<div class="alldone">\u2705 Nichts fehlt!</div>';
       }
@@ -1121,10 +1182,16 @@ function flowApp(DATA) {
       save(); scrollNach(y0);
       return;
     }
+    if (state.view === 4) {
+      document.getElementById('main').innerHTML = sendenAnsicht();
+      document.getElementById('botbar').innerHTML = `<button class="stepback" onclick="zeigeView(0)">\u2039 Ablauf</button><div class="nx"><div class="lbl">SENDEN</div></div>`;
+      save(); scrollNach(y0);
+      return;
+    }
     const alleFertig = naechsterOffen(0) < 0;
     if (alleFertig) {
       h += `<div class="alldone">\u2705 Tour komplett! \u23f1 ${fmtM(istGes() / 60)} min (Soll ${fmtM(sollGesMin)} min)</div>`;
-      h += '<button class="report z" onclick="reportZeit()">\u23f1 Zeit-Protokoll teilen</button>';
+      h += '<button class="report z" onclick="reportZeit()">\u23f1 Zeit-Protokoll senden</button>';
       if (mc) h += '<button class="report" onclick="zeigeView(1)">\u26a0 Fehlt-Liste offen (' + mc + ')</button>';
       h = ablaufListe(h);
       document.getElementById('main').innerHTML = h;
@@ -1177,7 +1244,10 @@ function flowApp(DATA) {
   }, 1000);
 
   // ---- Meldungen ----
-  window.reportFehlt = async () => {
+  // Hinweiszeile fuer nicht abgehakte Positionen: bewusst ohne "Kiste <n>", "Device", "[id"
+  // und "Gesamt:" - die Fehlt-Meldung wird maschinell gelesen, diese Zeile darf dort nichts ausloesen.
+  const offenHinweis = () => { const n = offenPack(); return n ? '\nHinweis: ' + n + ' Position(en) noch nicht abgehakt \u2013 nicht in dieser Meldung enthalten.' : ''; };
+  window.reportFehlt = async (alt) => {
     const ml = missList();
     if (!ml.length) return;
     let txt = 'FEHLT-MELDUNG Packliste ' + DATA.tour + ' ' + DATA.datum + '\n';
@@ -1187,18 +1257,30 @@ function flowApp(DATA) {
       txt += '- Anwahl ' + e.it.sel.join('+') + ' \u00b7 ' + e.miss + '\u00d7 ' + e.it.name + ' \u00b7 ' + e.it.art + ' \u00b7 [id ' + e.it.id + ']\n';
     }
     txt += '\nGesamt: ' + ml.length + ' Position(en) mit Fehlmenge \u2013 bitte Bestand korrigieren.';
+    txt += offenHinweis();
     const sig = fehltSig();
-    if (await teile('Fehlt-Meldung Packliste ' + DATA.tour, txt)) { state.meld.fehlt = sig; save(); render(); }
+    if (await teile('Fehlt-Meldung Packliste ' + DATA.tour + ' ' + DATA.datum, txt, alt)) { state.meld.fehlt = sig; save(); render(); }
   };
-  window.reportZeit = async () => {
+  window.reportZeit = async (alt) => {
     let txt = 'ZEIT-PROTOKOLL Lagerliste ' + DATA.tour + ' ' + DATA.datum + '\n';
-    txt += 'Sollzeiten: ' + (P.quelle || '?') + ' \u00b7 Blatt ' + (P.blatt || '?') + ' \u00b7 Mengen aus dem Run des Tages\n\n';
+    txt += 'Sollzeiten: ' + (P.quelle || '?') + ' \u00b7 Blatt ' + (P.blatt || '?') + ' \u00b7 Mengen aus dem Run des Tages\n';
+    const offenS = STEPS.filter(s => !state.done[s.id] && !state.skipd[s.id]).length;
+    txt += 'Stand: ' + (offenS ? 'Tour NICHT komplett \u2013 ' + offenS + ' von ' + STEPS.length + ' Schritten offen' : 'Tour komplett') + '\n\n';
     for (const s of STEPS) {
       const sec = ist(s.id);
       if (sec < 1 && !state.done[s.id] && !state.skipd[s.id]) continue;
       txt += '- Nr ' + s.nr + ' \u00b7 ' + s.t + (s.sub ? ' \u00b7 ' + s.sub : '') + ' \u00b7 Ist ' + fmtM(sec / 60) + ' min'
         + (s.soll ? ' \u00b7 Soll ' + fmtM(s.soll) + ' min \u00b7 mit Puffer ' + fmtM(s.soll * (1 + pufVon(s.nr))) + ' min' + (s.ev ? ' je Ereignis' : '') : '')
         + (state.skipd[s.id] ? ' \u00b7 \u00fcbersprungen' : (state.done[s.id] ? '' : ' \u00b7 offen')) + '\n';
+    }
+    // Nie begonnene Schritte: eigene Liste ohne "- Nr"-Praefix, damit der Einleser sie nicht als
+    // Messung (Ist 0 min) uebernimmt.
+    const nie = STEPS.filter(s => ist(s.id) < 1 && !state.done[s.id] && !state.skipd[s.id]);
+    if (nie.length) {
+      txt += '\nNoch nicht begonnen (offen): ' + nie.length + ' Schritt(e)\n';
+      // Hoechstens 30 Zeilen, damit die E-Mail kurz bleibt (manche Mail-Apps kuerzen lange mailto-Texte).
+      for (const s of nie.slice(0, 30)) txt += '  \u00b7 Nr ' + s.nr + ' \u00b7 ' + s.t + (s.sub ? ' \u00b7 ' + s.sub : '') + '\n';
+      if (nie.length > 30) txt += '  \u2026 und ' + (nie.length - 30) + ' weitere\n';
     }
     txt += '\n' + (BD ? 'Bedarfs-Mengen' : 'Bedarfs-Annahmen') + ' je Tour (im Gesamt-Soll): Nr 8 \u00d7 ' + (P.muenz || 0) + ' = ' + fmtM((P.muenz || 0) * sollMin(8, 1))
       + ' min \u00b7 Nr 9 \u00d7 ' + (P.todos || 0) + ' = ' + fmtM((P.todos || 0) * sollMin(9, 1)) + ' min'
@@ -1209,18 +1291,10 @@ function flowApp(DATA) {
     const sollMitPuffer = zeitZeilen().reduce((a, z) => a + z.mp, 0);
     txt += 'GESAMT: Ist ' + fmtM(istGes() / 60) + ' min \u00b7 Soll ' + fmtM(sollGesMin) + ' min \u00b7 mit Puffer ' + fmtM(sollMitPuffer) + ' min\n';
     const stand = zeitSig();
-    if (await teile('Zeit-Protokoll Lagerliste ' + DATA.tour, txt)) { state.meld.zeit = stand; save(); render(); }
+    if (await teile('Zeit-Protokoll Lagerliste ' + DATA.tour + ' ' + DATA.datum, txt, alt)) { state.meld.zeit = stand; save(); render(); }
   };
-  // Rueckgabe true = geteilt bzw. in die Zwischenablage kopiert; false = abgebrochen/nicht moeglich.
-  async function teile(titel, txt) {
-    try { await navigator.share({title: titel, text: txt}); return true; }
-    catch(e) {
-      // Bewusst abgebrochenes Teilen-Menue: nichts kopieren, nichts werten.
-      if (e && e.name === 'AbortError') return false;
-      try { await navigator.clipboard.writeText(txt); document.getElementById('heard').textContent = 'Meldung kopiert \u2013 in Chat/Mail einf\u00fcgen'; return true; }
-      catch(e2) { document.getElementById('heard').textContent = 'Teilen nicht m\u00f6glich \u2013 bitte Screenshot senden'; return false; }
-    }
-  }
+  // Rueckgabe true = Mail geoeffnet, geteilt bzw. kopiert; false = abgebrochen/nicht moeglich.
+  const teile = (titel, txt, alt) => sendeMeldung(DATA, titel, txt, alt);
 
   // ---- Sprachausgabe / -steuerung ----
   let voiceOn = !!state.voiceOn, micOn = false, recog = null, speaking = false;
@@ -1419,8 +1493,9 @@ function render() {
         const s = st(k(e.m,e.it));
         h += row(e.m, e.it, 'miss', s===3?'\u00bd':'!', false, '\u00d7 ' + e.miss, s===3 ? (partOf(k(e.m,e.it)) + ' gepackt \u00b7 Rest fehlt') : '');
       }
-      h += '</ul><button class="report" onclick="reportFehlt()">\ud83d\udce4 Fehlt-Liste melden</button>';
-      h += '<div class="hint">\u201eMelden\u201c \u00f6ffnet das Teilen-Men\u00fc \u2013 die Liste bitte wie besprochen senden, damit der Bestand korrigiert wird. Antippen macht eine Markierung r\u00fcckg\u00e4ngig.</div>';
+      h += '</ul><button class="report" onclick="reportFehlt()">\ud83d\udce4 Fehlt-Liste senden</button>';
+      if (meldeAdresse(DATA)) h += '<div class="sendst"><span></span><button class="altlink" onclick="reportFehlt(true)">andere App \u2026</button></div>';
+      h += '<div class="hint">' + sendeHinweis(DATA) + ' Senden geht jederzeit, auch wenn noch nicht alles abgehakt ist. Antippen macht eine Markierung r\u00fcckg\u00e4ngig.</div>';
     } else {
       h += '<div class="alldone">\u2705 Nichts fehlt!</div>';
     }
@@ -1555,7 +1630,7 @@ window.undo = () => {
   // das Sprachkommando /zurueck/ ausloesen.
   announce('R\u00fccknahme. ');
 };
-window.reportFehlt = async () => {
+window.reportFehlt = async (alt) => {
   const ml = missList();
   if (!ml.length) return;
   let txt = 'FEHLT-MELDUNG Packliste ' + DATA.tour + ' ' + DATA.datum + '\n';
@@ -1565,11 +1640,10 @@ window.reportFehlt = async () => {
     txt += '- Anwahl ' + e.it.sel.join('+') + ' \u00b7 ' + e.miss + '\u00d7 ' + e.it.name + ' \u00b7 ' + e.it.art + ' \u00b7 [id ' + e.it.id + ']\n';
   }
   txt += '\nGesamt: ' + ml.length + ' Position(en) mit Fehlmenge \u2013 bitte Bestand korrigieren.';
-  try { await navigator.share({title: 'Fehlt-Meldung Packliste ' + DATA.tour, text: txt}); }
-  catch(e) {
-    try { await navigator.clipboard.writeText(txt); document.getElementById('heard').textContent = 'Meldung kopiert \u2013 in Chat/Mail einf\u00fcgen'; }
-    catch(e2) { document.getElementById('heard').textContent = 'Teilen nicht m\u00f6glich \u2013 bitte Screenshot senden'; }
-  }
+  // Hinweiszeile bewusst ohne "Kiste <n>", "Device", "[id" und "Gesamt:" (maschinell gelesene Meldung).
+  const offenN = DATA.machines.reduce((n,m) => n + m.items.filter(it => !st(k(m,it))).length, 0);
+  if (offenN) txt += '\nHinweis: ' + offenN + ' Position(en) noch nicht abgehakt \u2013 nicht in dieser Meldung enthalten.';
+  await sendeMeldung(DATA, 'Fehlt-Meldung Packliste ' + DATA.tour + ' ' + DATA.datum, txt, alt);
 };
 
 let voiceOn = !!state.voiceOn, micOn = false, recog = null, speaking = false;
