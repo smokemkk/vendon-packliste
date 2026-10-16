@@ -455,6 +455,8 @@ function flowApp(DATA) {
   // Tatsaechlich offene Aufgaben je Automat (falls in den Tour-Daten enthalten): Anzahl fuer
   // Nr. 8 (Muenzgeldbefuellungen) bzw. Nr. 9 (ToDos) ueber die genannten Automaten, sonst null.
   const BD = (P.bedarf && P.bedarf.dev) || null;
+  // Offene Aufgaben NICHT erfasst: Mengen 0, Nr. 2/8/9 ohne Soll, Hinweis "ToDos nicht erfasst" (seit 2026-10-16).
+  const NE = !BD && P.bedarf_fehlt === 1;
   const bedarfN = (nr, devs) => {
     if (!BD) return null;
     let n = 0;
@@ -493,6 +495,7 @@ function flowApp(DATA) {
   // Menge fuer Nr. 2: Automaten mit offenen ToDos (falls bekannt), sonst die ToDo-Annahme der Tour.
   const n2 = (typeof P.todos_auto === 'number') ? P.todos_auto : (P.todos || 0);
   if (n2 > 0) STEPS.push({id: 't2', nr: 2, t: titel(2), sub: (typeof P.todos_auto === 'number') ? ('Für ' + n2 + ' Automaten mit offenen ToDos') : 'Nur bei Bedarf', skip: 1, soll: sollMin(2, n2)});
+  else if (NE) STEPS.push({id: 't2', nr: 2, t: titel(2), sub: 'ToDos nicht erfasst – nur bei Bedarf (ohne Soll)', skip: 1, soll: 0});
   STEPS.push({id: 't3', nr: 3, t: titel(3), soll: sollMin(3, 1)});
   // Kontrollen vor der Abfahrt mit eigener Sollzeit (aus den Tour-Daten, Reihenfolge wie dort).
   (Array.isArray(P.lager_kontr) ? P.lager_kontr : []).forEach(nr => {
@@ -871,7 +874,7 @@ function flowApp(DATA) {
       ? `Fahrzeit gesamt<br><b>${fmtM(fahrtIst() / 60)}</b> / ${fmtM(P.fahrzeit || 0)} min`
       : (s.soll ? (s.ev ? (typeof s.bn === 'number'
             ? (s.bn > 0 ? `${Number.isInteger(s.bn) ? s.bn : fmtM(s.bn)} offen \u00b7 Soll<br><b>${fmtM(s.soll * s.bn)} min</b>` : `Nichts offen<br><b>\u00fcberspringen</b>`)
-            : `Soll je Ereignis<br><b>${fmtM(s.soll)} min</b>`) : `Soll<br><b>${fmtM(s.soll)} min</b>`) : '');
+            : (NE ? `ToDos nicht erfasst<br><b>ohne Soll</b>` : `Soll je Ereignis<br><b>${fmtM(s.soll)} min</b>`)) : `Soll<br><b>${fmtM(s.soll)} min</b>`) : '');
     const pauseH = state.pausiert
       ? `<div class="pausenote" id="pausenote">\u23f8 PAUSE \u2013 Timer angehalten (${fmtM(pauseIst() / 60)} min) \u00b7 \u25b6 zum Weitermachen</div>`
       : '';
@@ -970,7 +973,8 @@ function flowApp(DATA) {
       else if (nr === 9) soll = (P.todos || 0) * sollMin(9, 1);
       else soll = steps.reduce((a, s) => a + (s.soll || 0), 0);
       zeilen.push({nr, name: titel(nr), anz: steps.length, ist: istM,
-                   soll, mp: soll * (1 + pufVon(nr)), annahme: (nr === 8 || nr === 9)});
+                   soll, mp: soll * (1 + pufVon(nr)), annahme: (nr === 8 || nr === 9),
+                   ohneSoll: NE && (nr === 2 || nr === 8 || nr === 9)});
     }
     // Feste Kontroll-Schritte ohne Soll (String-Nr., z. B. "3a"/"3b") aggregiert einreihen.
     const extra = {};
@@ -997,7 +1001,7 @@ function flowApp(DATA) {
     h += `<div class="srow kopf"><span class="snr"></span><span class="snm">T\u00e4tigkeit</span><span class="z3">Ist</span><span class="z3">Soll</span><span class="z3">+Puffer</span></div>`;
     for (const z of zeilen) {
       const kl = z.ohneSoll ? (z.ist > 0 ? 'istok' : '') : (z.ist > z.mp ? 'istover' : z.ist > z.soll ? 'istwarn' : (z.ist > 0 ? 'istok' : ''));
-      h += `<div class="srow"><span class="snr">${z.nr}</span><span class="snm">${esc(z.name)}${z.annahme ? (BD ? '<small>Soll = offene Aufgaben heute</small>' : '<small>Soll = Tour-Annahme</small>') : (z.anz > 1 ? '<small>' + z.anz + ' Schritte</small>' : '')}</span>` +
+      h += `<div class="srow"><span class="snr">${z.nr}</span><span class="snm">${esc(z.name)}${z.annahme ? (BD ? '<small>Soll = offene Aufgaben heute</small>' : NE ? '<small>ToDos nicht erfasst \u2013 Soll 0</small>' : '<small>Soll = Tour-Annahme</small>') : (z.anz > 1 ? '<small>' + z.anz + ' Schritte</small>' : '')}</span>` +
         `<span class="z3 ${kl}">${fmtM(z.ist)}</span><span class="z3">${z.ohneSoll ? '\u2013' : fmtM(z.soll)}</span><span class="z3">${z.ohneSoll ? '\u2013' : fmtM(z.mp)}</span></div>`;
     }
     h += `<div class="srow summe"><span class="snr">\u03a3</span><span class="snm">GESAMT (min)</span>` +
@@ -1005,7 +1009,7 @@ function flowApp(DATA) {
     h += `<div class="srow"><span class="snr">\u23f8</span><span class="snm">Pausen<small>laufen separat, z\u00e4hlen nicht ins Ist</small></span>` +
       `<span class="z3">${fmtM(pauseIst() / 60)}</span><span class="z3">\u2013</span><span class="z3">\u2013</span></div>`;
     h += '</div>';
-    h += '<div class="hint">Ist gr\u00fcn = im Soll \u00b7 gelb = \u00fcber Soll \u00b7 rot = \u00fcber Soll + Puffer. Soll = Sollzeit je T\u00e4tigkeit \u00d7 heutige Mengen; Nr. 4 = Fahrzeit-Budget der Tour; Nr. 8/9 ' + (BD ? 'nach den heute offenen Aufgaben' : 'nach Tour-Annahme') + '.</div>';
+    h += '<div class="hint">Ist gr\u00fcn = im Soll \u00b7 gelb = \u00fcber Soll \u00b7 rot = \u00fcber Soll + Puffer. Soll = Sollzeit je T\u00e4tigkeit \u00d7 heutige Mengen; Nr. 4 = Fahrzeit-Budget der Tour; Nr. 8/9 ' + (BD ? 'nach den heute offenen Aufgaben' : NE ? 'mit 0 (offene Aufgaben heute nicht erfasst)' : 'nach Tour-Annahme') + '.</div>';
     h += '<button class="report z" onclick="reportZeit()">\u23f1 Zeit-Protokoll senden</button>';
     return h;
   }
@@ -1304,7 +1308,7 @@ function flowApp(DATA) {
     }
     txt += '\n' + (BD ? 'Bedarfs-Mengen' : 'Bedarfs-Annahmen') + ' je Tour (im Gesamt-Soll): Nr 8 \u00d7 ' + (P.muenz || 0) + ' = ' + fmtM((P.muenz || 0) * sollMin(8, 1))
       + ' min \u00b7 Nr 9 \u00d7 ' + (P.todos || 0) + ' = ' + fmtM((P.todos || 0) * sollMin(9, 1)) + ' min'
-      + ' \u00b7 Quelle: ' + (BD ? 'offene Aufgaben, Stand ' + String(P.bedarf.stand || '?') : 'Katalog-Annahme') + '\n';
+      + ' \u00b7 Quelle: ' + (BD ? 'offene Aufgaben, Stand ' + String(P.bedarf.stand || '?') : NE ? 'ToDos nicht erfasst (0)' : 'Katalog-Annahme') + '\n';
     txt += 'Fahrzeit gesamt: Ist ' + fmtM(fahrtIst() / 60) + ' min \u00b7 Soll ' + fmtM(P.fahrzeit || 0) + ' min \u00b7 mit Puffer ' + fmtM((P.fahrzeit || 0) * (1 + pufVon(4))) + ' min\n';
     txt += 'Pausen gesamt: ' + fmtM(pauseIst() / 60) + ' min (nicht in den Schritt-Zeiten enthalten)\n';
     // Gesamt-Soll mit Puffer = dieselbe Summe wie in der Zeit-Uebersicht (Spalte "+Puffer").
