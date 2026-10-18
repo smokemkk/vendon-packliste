@@ -1306,7 +1306,7 @@ function flowApp(DATA) {
       for (const s of nie.slice(0, 30)) txt += '  \u00b7 Nr ' + s.nr + ' \u00b7 ' + s.t + (s.sub ? ' \u00b7 ' + s.sub : '') + '\n';
       if (nie.length > 30) txt += '  \u2026 und ' + (nie.length - 30) + ' weitere\n';
     }
-    txt += '\n' + (BD ? 'Bedarfs-Mengen' : 'Bedarfs-Annahmen') + ' je Tour (im Gesamt-Soll): Nr 8 \u00d7 ' + (P.muenz || 0) + ' = ' + fmtM((P.muenz || 0) * sollMin(8, 1))
+    txt += '\n' + (BD ? 'Bedarfs-Mengen' : NE ? 'ToDos nicht erfasst' : 'Bedarfs-Annahmen') + ' je Tour (im Gesamt-Soll): Nr 8 \u00d7 ' + (P.muenz || 0) + ' = ' + fmtM((P.muenz || 0) * sollMin(8, 1))
       + ' min \u00b7 Nr 9 \u00d7 ' + (P.todos || 0) + ' = ' + fmtM((P.todos || 0) * sollMin(9, 1)) + ' min'
       + ' \u00b7 Quelle: ' + (BD ? 'offene Aufgaben, Stand ' + String(P.bedarf.stand || '?') : NE ? 'ToDos nicht erfasst (0)' : 'Katalog-Annahme') + '\n';
     txt += 'Fahrzeit gesamt: Ist ' + fmtM(fahrtIst() / 60) + ' min \u00b7 Soll ' + fmtM(P.fahrzeit || 0) + ' min \u00b7 mit Puffer ' + fmtM((P.fahrzeit || 0) * (1 + pufVon(4))) + ' min\n';
