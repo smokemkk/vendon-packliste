@@ -492,6 +492,11 @@ function flowApp(DATA) {
     STEPS.push({id: 't' + v.nr + 'v', nr: v.nr, t: titel(v.nr), sub: String(v.sub || ''), soll: sollMin(v.nr, 1)});
   });
   STEPS.push({id: 't1', nr: 1, t: titel(1), sub: 'Alle Kisten dieser Tour', mode: 'pack', soll: sollMin(1, stkGes)});
+  // Seit Katalog v16: Schritte direkt nach dem Kistenpacken (Nr. 23/24), Reihenfolge wie im Katalog-Blatt.
+  (Array.isArray(P.nach_packen) ? P.nach_packen : []).forEach(nr => {
+    if (typeof nr !== 'number' || !T(nr)) return;
+    STEPS.push({id: 't' + nr, nr, t: titel(nr), sub: 'Nach dem Kistenpacken', soll: sollMin(nr, 1)});
+  });
   // Menge fuer Nr. 2: Automaten mit offenen ToDos (falls bekannt), sonst die ToDo-Annahme der Tour.
   const n2 = (typeof P.todos_auto === 'number') ? P.todos_auto : (P.todos || 0);
   if (n2 > 0) STEPS.push({id: 't2', nr: 2, t: titel(2), sub: (typeof P.todos_auto === 'number') ? ('Für ' + n2 + ' Automaten mit offenen ToDos') : 'Nur bei Bedarf', skip: 1, soll: sollMin(2, n2)});
@@ -569,6 +574,11 @@ function flowApp(DATA) {
   const ohneT = Array.isArray(P.ohne_tour) ? P.ohne_tour : [];
   if (!P.ohne_rueck) { fahrtN++; STEPS.push({id: 'frueck', nr: 4, t: titel(4), sub: '\u2192 zur\u00fcck', fahrt: 1}); }
   if (ohneT.indexOf(17) < 0) STEPS.push({id: 't17', nr: 17, t: titel(17), soll: sollMin(17, 1)});
+  // Seit Katalog v16: Kontrollen am Tourende direkt nach Nr. 17 (Nr. 25), nur wenn im Katalog-Blatt dort.
+  (Array.isArray(P.ende_kontr) ? P.ende_kontr : []).forEach(nr => {
+    if (typeof nr !== 'number' || !T(nr)) return;
+    STEPS.push({id: 't' + nr, nr, t: titel(nr), sub: 'Am Tourende', soll: sollMin(nr, 1)});
+  });
   if (ohneT.indexOf(18) < 0) STEPS.push({id: 't18', nr: 18, t: titel(18), soll: sollMin(18, 1)});
   if (state.step >= STEPS.length) state.step = 0;
   // Wurde am selben Tag ein geaenderter Plan veroeffentlicht, kann eine gespeicherte
