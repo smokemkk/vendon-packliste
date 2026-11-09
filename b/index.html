@@ -403,6 +403,49 @@ async function sendeMeldung(DATA, titel, txt, alt) {
   }
 }
 
+// ==================== Gemeinsames: Text der Fehlt-Meldung ====================
+// Beide App-Pfade bauen die Meldung hier (gleicher Aufbau). Die Meldung wird maschinell gelesen:
+// Nur die Fehlpositionen (Kopf "Kiste <n> ... (Device <n>):", Zeilen "- Anwahl ... [id <n>]")
+// duerfen dort als Position erkannt werden - ihr Zeilenformat bleibt deshalb unveraendert.
+// Danach folgt als reine Information die Liste der noch nicht abgehakten Positionen (keine
+// Fehlmenge). Sie enthaelt bewusst keine dieser Kennungen; Namen werden zusaetzlich entschaerft.
+// Hoechstens OFFEN_MAX Positionen, damit die E-Mail kurz bleibt (wie beim Zeit-Protokoll).
+// Vor dem Entschaerfen: Unicode vereinheitlichen (NFKC, z. B. Vollbreiten-Zeichen), unsichtbare
+// Format- und ignorierbare Zeichen entfernen und Steuerzeichen/Zeilentrenner zu Leerzeichen machen -
+// sonst entstuende eine Kennung erst beim Lesen (z. B. wenn ein Wagenruecklauf in "[i<CR>d" entfernt
+// wird). Eckige Klammern werden im Block grundsaetzlich zu runden. "Device"/"Kiste" vor einer Zahl
+// wird auch mit Akzenten erkannt (zerlegte Form), falls ein Mailweg Akzente entfernt.
+const OFFEN_MAX = 30;
+const ohneMarker = s => String(s).normalize('NFKC')
+  .replace(/[\p{Cf}\p{Default_Ignorable_Code_Point}]/gu, '')
+  .replace(/[\p{Cc}\p{Zl}\p{Zp}]/gu, ' ')
+  .replace(/\[/g, '(').replace(/\]/g, ')')
+  .normalize('NFD')
+  .replace(/((?:d\p{M}*e\p{M}*v\p{M}*i\p{M}*c\p{M}*e|k\p{M}*i\p{M}*s\p{M}*t\p{M}*e)\p{M}*)[\s\p{M}]+(?=\p{M}*\d)/giu, '$1-')
+  .normalize('NFC')
+  .replace(/(gesamt)\s*:/gi, '$1 -')
+  .replace(/-(?=\s*anwahl)/gi, '\u2013');
+// ml = [{m, i, it, miss}] (Fehlpositionen), offen = [{m, i, it}] (Status 0 = noch nicht abgehakt).
+function fehltText(DATA, ml, offen) {
+  let txt = 'FEHLT-MELDUNG Packliste ' + DATA.tour + ' ' + DATA.datum + '\n';
+  let lastI = -1;
+  for (const e of ml) {
+    if (e.i !== lastI) { txt += '\nKiste ' + (e.i + 1) + ' \u00b7 ' + e.m.label + ' (Device ' + e.m.device + '):\n'; lastI = e.i; }
+    txt += '- Anwahl ' + e.it.sel.join('+') + ' \u00b7 ' + e.miss + '\u00d7 ' + e.it.name + ' \u00b7 ' + e.it.art + ' \u00b7 [id ' + e.it.id + ']\n';
+  }
+  txt += '\nGesamt: ' + ml.length + ' Position(en) mit Fehlmenge \u2013 bitte Bestand korrigieren.';
+  if (offen.length) {
+    txt += '\n\nNoch nicht abgehakt (keine Fehlmenge \u2013 nicht buchen): ' + offen.length + ' Position(en)\n';
+    let lastO = -1;
+    for (const o of offen.slice(0, OFFEN_MAX)) {
+      if (o.i !== lastO) { txt += ohneMarker('Automat ' + o.m.label + ' \u00b7 #' + o.m.device) + '\n'; lastO = o.i; }
+      txt += '  \u00b7 ' + ohneMarker('Anwahl ' + (o.it.sel.join('+') || '\u2013') + ' \u00b7 ' + o.it.qty + ' Stk. \u00b7 ' + o.it.name + ' \u00b7 ' + o.it.art) + '\n';
+    }
+    if (offen.length > OFFEN_MAX) txt += '  \u2026 und ' + (offen.length - OFFEN_MAX) + ' weitere\n';
+  }
+  return txt;
+}
+
 function startApp(DATA) {
   if (DATA.plan && DATA.machines && DATA.machines.length) { flowApp(DATA); }
   else { legacyApp(DATA); }
@@ -518,7 +561,7 @@ function flowApp(DATA) {
     if (!devs.length) return;
     // Stabile Standort-Kennung = erstes Device des Standorts. Frueher der Positions-Index:
     // bei Neuveroeffentlichung am selben Tag mit anderer Reihenfolge waeren gespeicherte
-    // Zeiten/Haken sonst still einem anderen Standort zugefallen (Omsdex 2026-10-10).
+    // Zeiten/Haken sonst still einem anderen Standort zugefallen.
     // Praefixe 'sd'/'fd' sind bewusst verschieden von den frueheren Positions-Kennungen
     // s<Index>_... / f<n> - eine alte Kennung kann so nie einer neuen gleichen.
     const sk = devs[0];
@@ -728,6 +771,7 @@ function flowApp(DATA) {
   const partOf = key => state.part[key] || 0;
   const missQty = (m, it) => { const s = st(k(m, it)); return s === 2 ? it.qty : s === 3 ? Math.max(0, it.qty - partOf(k(m, it))) : 0; };
   const missList = () => DATA.machines.flatMap((m, i) => m.items.filter(it => missQty(m, it) > 0).map(it => ({m, i, it, miss: missQty(m, it)})));
+  const offenList = () => DATA.machines.flatMap((m, i) => m.items.filter(it => !st(k(m, it))).map(it => ({m, i, it})));
   let ui = {pickKey: null, pickVal: 0};
   // Scroll-Verhalten: Nach dem Abhaken springt die Ansicht zum NAECHSTEN OFFENEN Punkt
   // (#nextitem); bei sonstigen Korrekturen bleibt sie stehen; nur Schritt-, Kisten-
@@ -1032,10 +1076,10 @@ function flowApp(DATA) {
   // Stand, zu dem gemeldet wurde: aendert sich danach etwas (andere Fehlmengen, weitere
   // Schritte), gilt die Meldung nicht mehr als aktuell und muss erneut gesendet werden.
   // Signaturen = alles, was im jeweiligen Bericht steht (sonst bliebe "gesendet" nach einer Aenderung
-  // stehen): Fehlt = Fehlpositionen + Zahl nicht abgehakter Positionen; Zeit = Pruefsumme ueber den
-  // vollstaendigen Berichtstext (Omsdex Runde 3).
+  // stehen): Fehlt und Zeit = Pruefsumme ueber den vollstaendigen Berichtstext (Fehlt: Fehlpositionen
+  // und Liste der nicht abgehakten Positionen; Zeit: kompletter Zeit-Protokoll-Text).
   const textSig = t => { let h = 5381; for (let i = 0; i < t.length; i++) h = ((h * 33) ^ t.charCodeAt(i)) >>> 0; return 'v2-' + h.toString(16) + '-' + t.length; };
-  const fehltSig = () => missList().map(e => k(e.m, e.it) + ':' + e.miss).join('|') + '#' + offenPack();
+  const fehltSig = () => textSig(fehltText(DATA, missList(), offenList()));
   const zeitSig = () => textSig(zeitBericht());
   function punkte() {
     const pflicht = STEPS.filter(s => !s.skip);
@@ -1276,25 +1320,17 @@ function flowApp(DATA) {
   }, 1000);
 
   // ---- Meldungen ----
-  // Hinweiszeile fuer nicht abgehakte Positionen: bewusst ohne "Kiste <n>", "Device", "[id"
-  // und "Gesamt:" - die Fehlt-Meldung wird maschinell gelesen, diese Zeile darf dort nichts ausloesen.
-  const offenHinweis = () => { const n = offenPack(); return n ? '\nHinweis: ' + n + ' Position(en) noch nicht abgehakt \u2013 nicht in dieser Meldung enthalten.' : ''; };
+  // Text der Fehlt-Meldung: gemeinsame Funktion fehltText (Fehlpositionen + Info-Liste der nicht
+  // abgehakten Positionen ohne maschinell gelesene Kennungen).
   window.reportFehlt = async (alt) => {
     if (state.mailOffen) { zeigeView(4); return; }  // erst die offene Rueckfrage beantworten
     const ml = missList();
     if (!ml.length) return;
-    let txt = 'FEHLT-MELDUNG Packliste ' + DATA.tour + ' ' + DATA.datum + '\n';
-    let lastI = -1;
-    for (const e of ml) {
-      if (e.i !== lastI) { txt += '\nKiste ' + (e.i + 1) + ' \u00b7 ' + e.m.label + ' (Device ' + e.m.device + '):\n'; lastI = e.i; }
-      txt += '- Anwahl ' + e.it.sel.join('+') + ' \u00b7 ' + e.miss + '\u00d7 ' + e.it.name + ' \u00b7 ' + e.it.art + ' \u00b7 [id ' + e.it.id + ']\n';
-    }
-    txt += '\nGesamt: ' + ml.length + ' Position(en) mit Fehlmenge \u2013 bitte Bestand korrigieren.';
-    txt += offenHinweis();
-    const sig = fehltSig();
+    const txt = fehltText(DATA, ml, offenList());
+    const sig = textSig(txt);
     meldeErgebnis('fehlt', sig, await teile('Fehlt-Meldung Packliste ' + DATA.tour + ' ' + DATA.datum, txt, alt));
   };
-  // Text des Zeit-Protokolls (auch Grundlage der Gesendet-Signatur zeitSig, Omsdex Runde 3).
+  // Text des Zeit-Protokolls (auch Grundlage der Gesendet-Signatur zeitSig).
   function zeitBericht() {
     let txt = 'ZEIT-PROTOKOLL Lagerliste ' + DATA.tour + ' ' + DATA.datum + '\n';
     txt += 'Sollzeiten: ' + (P.quelle || '?') + ' \u00b7 Blatt ' + (P.blatt || '?') + ' \u00b7 Mengen aus dem Run des Tages\n';
@@ -1685,17 +1721,9 @@ window.undo = () => {
 window.reportFehlt = async (alt) => {
   const ml = missList();
   if (!ml.length) return;
-  let txt = 'FEHLT-MELDUNG Packliste ' + DATA.tour + ' ' + DATA.datum + '\n';
-  let lastI = -1;
-  for (const e of ml) {
-    if (e.i !== lastI) { txt += '\nKiste ' + (e.i+1) + ' \u00b7 ' + e.m.label + ' (Device ' + e.m.device + '):\n'; lastI = e.i; }
-    txt += '- Anwahl ' + e.it.sel.join('+') + ' \u00b7 ' + e.miss + '\u00d7 ' + e.it.name + ' \u00b7 ' + e.it.art + ' \u00b7 [id ' + e.it.id + ']\n';
-  }
-  txt += '\nGesamt: ' + ml.length + ' Position(en) mit Fehlmenge \u2013 bitte Bestand korrigieren.';
-  // Hinweiszeile bewusst ohne "Kiste <n>", "Device", "[id" und "Gesamt:" (maschinell gelesene Meldung).
-  const offenN = DATA.machines.reduce((n,m) => n + m.items.filter(it => !st(k(m,it))).length, 0);
-  if (offenN) txt += '\nHinweis: ' + offenN + ' Position(en) noch nicht abgehakt \u2013 nicht in dieser Meldung enthalten.';
-  await sendeMeldung(DATA, 'Fehlt-Meldung Packliste ' + DATA.tour + ' ' + DATA.datum, txt, alt);
+  // Gleicher Text wie im Ablauf-Modus (fehltText): Fehlpositionen + Info-Liste der nicht abgehakten Positionen.
+  const offen = DATA.machines.flatMap((m,i) => m.items.filter(it => !st(k(m,it))).map(it => ({m, i, it})));
+  await sendeMeldung(DATA, 'Fehlt-Meldung Packliste ' + DATA.tour + ' ' + DATA.datum, fehltText(DATA, ml, offen), alt);
 };
 
 let voiceOn = !!state.voiceOn, micOn = false, recog = null, speaking = false;
