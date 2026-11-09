@@ -1396,18 +1396,45 @@ function flowApp(DATA) {
       // iOS spielt bei JEDEM Start der Spracherkennung einen Systemton. Deshalb laeuft die
       // Erkennung dort waehrend der Ansage weiter (Eigenecho wird per speaking/sprachEnde
       // ignoriert) statt sie zu stoppen und neu zu starten.
-      if (recog && !IOS) { try { recog.abort(); } catch(e){} }
+      // Generationszaehler: Callbacks einer per cancel() verworfenen Ansage duerfen die
+      // Echo-Sperre der laufenden Ansage nicht vorzeitig aufheben. Die neue Generation gilt
+      // schon VOR cancel(), weil der Browser die Abbruch-Meldung der alten Ansage sofort
+      // (synchron) ausliefern kann. Die Sperre steht auch vor recog.abort(), damit ein sofort
+      // gemeldetes Erkennungsende die Erkennung nicht waehrend der Ansage neu startet.
+      const g = ++uGen;
       speaking = true;
+      if (recog && !IOS) { try { recog.abort(); } catch(e){} }
       synth.cancel();
       const u = new SpeechSynthesisUtterance(txt);
       u.lang = 'de-DE'; u.rate = RATE;
-      // Generationszaehler: Callbacks einer per cancel() verworfenen Ansage duerfen die
-      // Echo-Sperre der laufenden Ansage nicht vorzeitig aufheben.
-      const g = ++uGen;
-      u.onend = u.onerror = () => { if (g !== uGen) return; speaking = false; sprachEnde = Date.now(); if (micOn && !recLive) startRecog(); };
+      const ansageEnde = () => { if (g !== uGen || !speaking) return; speaking = false; sprachEnde = Date.now(); if (micOn && !recLive) startRecog(); };
+      u.onend = u.onerror = ansageEnde;
       synth.speak(u);
+      // Sicherheitsnetz: Meldet der Browser das Ende einer Ansage nicht (auf iOS beobachtet),
+      // bliebe die Echo-Sperre fuer immer an und kein Sprachkommando kaeme mehr durch. Darum:
+      // spricht der Browser nach 1,5 s nicht mehr (und hat nichts in der Warteschlange) oder
+      // sind 45 s vergangen, gilt die Ansage als beendet. Nach 45 s wird die Ausgabe vorher
+      // abgebrochen, damit die Sperre nie aufgeht, waehrend noch gesprochen wird.
+      const t0 = Date.now();
+      const wache = setInterval(() => {
+        if (g !== uGen || !speaking) { clearInterval(wache); return; }
+        const dauer = Date.now() - t0;
+        if (dauer > 45000) { clearInterval(wache); try { synth.cancel(); } catch(e){} ansageEnde(); }
+        else if (dauer > 1500 && !synth.speaking && !synth.pending) { clearInterval(wache); ansageEnde(); }
+      }, 500);
     } catch(e) { speaking = false; }
   }
+  // iOS gibt die Sprachausgabe erst frei, wenn einmal eine Ansage beim Antippen gestartet wurde.
+  // Nach dem Neuladen ist der Lautsprecher-Knopf aber schon aus dem Speicher an; eine nur per
+  // Sprachkommando ausgeloeste Ansage bliebe dann stumm. Deshalb startet das erste Antippen
+  // (egal wo) einmal eine stille Ansage, die die Sprachausgabe freigibt.
+  let sprachFrei = false;
+  const sprachFreigabe = () => {
+    if (sprachFrei || !IOS || !voiceOn || !synth) return;
+    sprachFrei = true;
+    try { const u = new SpeechSynthesisUtterance(' '); u.volume = 0; synth.speak(u); } catch(e){}
+  };
+  ['touchend', 'click'].forEach(ev => document.addEventListener(ev, sprachFreigabe, true));
   const sprich = it => it.qty + ' mal ' + it.name.replace(/\(.*?\)/g, ' ').replace(/\s+/g, ' ').trim();
   const aktuelleMaschine = () => {
     const s = STEPS[state.step];
@@ -1415,22 +1442,30 @@ function flowApp(DATA) {
     if (s.mode === 'fill') return DATA.machines[s.mi];
     return null;
   };
-  function ansageItem(prefix) {
-    if (!voiceOn || state.view !== 0) return;
+  // Ansagetext der naechsten offenen Position ('' ausserhalb der Ablauf-Ansicht oder ohne Kiste).
+  function itemText() {
+    if (state.view !== 0) return '';
     const m = aktuelleMaschine();
-    if (!m) return;
+    if (!m) return '';
     const open = m.items.filter(it => !st(k(m, it)));
-    speak((prefix || '') + (open.length ? sprich(open[0]) : 'Fertig hier.'));
+    return open.length ? sprich(open[0]) : 'Fertig hier.';
+  }
+  function ansageItem(prefix) {
+    if (!voiceOn) return;
+    const t = itemText();
+    if (t) speak((prefix || '') + t);
   }
   function ansageSchritt() {
     if (!voiceOn) return;
     const s = STEPS[state.step];
-    if (s.mode === 'pack' || s.mode === 'fill') { speak('Nummer ' + s.nr + '. ' + s.t + '. '); setTimeout(() => ansageItem(), 50); }
+    // Schritt und erste Position in EINER Ansage: frueher brach die 50 ms spaeter gestartete
+    // Positions-Ansage (speak -> cancel) die Schritt-Ansage ab.
+    if (s.mode === 'pack' || s.mode === 'fill') speak('Nummer ' + s.nr + '. ' + s.t + '. ' + itemText());
     else speak('Nummer ' + s.nr + '. ' + s.t + (s.sub ? '. ' + s.sub : '') + '.');
   }
   window.toggleVoice = () => {
     voiceOn = !voiceOn; state.voiceOn = voiceOn; save(); updVB();
-    if (voiceOn) ansageSchritt(); else if (synth) synth.cancel();
+    if (voiceOn) { sprachFrei = true; ansageSchritt(); } else if (synth) synth.cancel();
   };
   const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
   function startRecog() {
@@ -1440,9 +1475,13 @@ function flowApp(DATA) {
       recog.lang = 'de-DE'; recog.continuous = true; recog.interimResults = false;
       recog.onstart = () => { recLive = true; };
       recog.onresult = ev => {
-        // Eigene Ansage (und deren Nachlauf) nicht als Kommando werten.
-        if (speaking || Date.now() - sprachEnde < 1000) return;
+        // Eigene Ansage (und deren Nachlauf) nicht als Kommando werten - aber sichtbar machen,
+        // damit ein waehrend der Ansage gesprochenes Kommando erkennbar wiederholt werden muss.
         const t = ev.results[ev.results.length - 1][0].transcript.toLowerCase().trim();
+        if (speaking || Date.now() - sprachEnde < 1000) {
+          document.getElementById('heard').textContent = '\u201e' + t + '\u201c \u2013 w\u00e4hrend der Ansage ignoriert';
+          return;
+        }
         document.getElementById('heard').textContent = '\u201e' + t + '\u201c';
         handleVoice(t);
       };
@@ -1491,7 +1530,9 @@ function flowApp(DATA) {
     if (!window.isSecureContext) { heard.textContent = 'Mikro braucht HTTPS-Seite'; return; }
     micOn = !micOn; updVB();
     if (micOn) {
+      // Mikro als erste Bedienung schaltet auch das Vorlesen an -> iOS-Freigabe hier (Antippen) holen.
       if (!voiceOn) { voiceOn = true; state.voiceOn = true; save(); }
+      sprachFreigabe();
       heard.textContent = 'H\u00f6re zu \u2026 (\u201egepackt\u201c, \u201efehlt\u201c, \u201efertig\u201c)';
       startRecog(); updVB();
     } else { heard.textContent = ''; if (recog) { try { recog.abort(); } catch(e){} } }
@@ -1736,17 +1777,37 @@ function speak(txt) {
   if (!voiceOn || !synth) return;
   try {
     // iOS spielt bei jedem Start der Spracherkennung einen Systemton -> dort nicht stoppen/neu starten.
-    if (recog && !IOS) { try { recog.abort(); } catch(e){} }
+    // Generationszaehler: Callbacks verworfener Ansagen heben die Echo-Sperre nicht vorzeitig auf
+    // (neue Generation schon VOR cancel(), die Abbruch-Meldung kann synchron kommen); Sperre
+    // auch vor recog.abort(), damit ein sofortiges Erkennungsende keinen Neustart ausloest.
+    const g = ++uGen;
     speaking = true;
+    if (recog && !IOS) { try { recog.abort(); } catch(e){} }
     synth.cancel();
     const u = new SpeechSynthesisUtterance(txt);
     u.lang = 'de-DE'; u.rate = RATE;
-    // Generationszaehler: Callbacks verworfener Ansagen heben die Echo-Sperre nicht vorzeitig auf.
-    const g = ++uGen;
-    u.onend = u.onerror = () => { if (g !== uGen) return; speaking = false; sprachEnde = Date.now(); if (micOn && !recLive) startRecog(); };
+    const ansageEnde = () => { if (g !== uGen || !speaking) return; speaking = false; sprachEnde = Date.now(); if (micOn && !recLive) startRecog(); };
+    u.onend = u.onerror = ansageEnde;
     synth.speak(u);
+    // Sicherheitsnetz gegen eine haengende Echo-Sperre (Ende der Ansage nicht gemeldet, iOS).
+    const t0 = Date.now();
+    const wache = setInterval(() => {
+      if (g !== uGen || !speaking) { clearInterval(wache); return; }
+      const dauer = Date.now() - t0;
+      if (dauer > 45000) { clearInterval(wache); try { synth.cancel(); } catch(e){} ansageEnde(); }
+      else if (dauer > 1500 && !synth.speaking && !synth.pending) { clearInterval(wache); ansageEnde(); }
+    }, 500);
   } catch(e) { speaking = false; }
 }
+// iOS: Sprachausgabe erst nach einer beim Antippen gestarteten Ansage frei -> beim ersten
+// Antippen nach dem Laden (Lautsprecher schon an) einmal eine stille Ansage starten.
+let sprachFrei = false;
+const sprachFreigabe = () => {
+  if (sprachFrei || !IOS || !voiceOn || !synth) return;
+  sprachFrei = true;
+  try { const u = new SpeechSynthesisUtterance(' '); u.volume = 0; synth.speak(u); } catch(e){}
+};
+['touchend', 'click'].forEach(ev => document.addEventListener(ev, sprachFreigabe, true));
 const sprich = it => it.qty + ' mal ' + it.name.replace(/\(.*?\)/g, ' ').replace(/\s+/g, ' ').trim();
 function announce(prefix) {
   if (!voiceOn || state.tab === FEHLT || !DATA.machines.length) return;
@@ -1756,7 +1817,7 @@ function announce(prefix) {
 }
 window.toggleVoice = () => {
   voiceOn = !voiceOn; state.voiceOn = voiceOn; save(); updVB();
-  if (voiceOn) announce('Vorlesen an. '); else if (synth) synth.cancel();
+  if (voiceOn) { sprachFrei = true; announce('Vorlesen an. '); } else if (synth) synth.cancel();
 };
 const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
 function startRecog() {
@@ -1766,8 +1827,11 @@ function startRecog() {
     recog.lang = 'de-DE'; recog.continuous = true; recog.interimResults = false;
     recog.onstart = () => { recLive = true; };
     recog.onresult = ev => {
-      if (speaking || Date.now() - sprachEnde < 1000) return;
       const t = ev.results[ev.results.length-1][0].transcript.toLowerCase().trim();
+      if (speaking || Date.now() - sprachEnde < 1000) {
+        document.getElementById('heard').textContent = '\u201e' + t + '\u201c \u2013 w\u00e4hrend der Ansage ignoriert';
+        return;
+      }
       document.getElementById('heard').textContent = '\u201e' + t + '\u201c';
       handleVoice(t);
     };
@@ -1802,7 +1866,9 @@ window.toggleMic = () => {
   if (!window.isSecureContext) { heard.textContent = 'Mikro braucht HTTPS-Seite'; return; }
   micOn = !micOn; updVB();
   if (micOn) {
+    // Mikro als erste Bedienung schaltet auch das Vorlesen an -> iOS-Freigabe hier (Antippen) holen.
     if (!voiceOn) { voiceOn = true; state.voiceOn = true; save(); }
+    sprachFreigabe();
     heard.textContent = 'H\u00f6re zu \u2026 (\u201egepackt\u201c, \u201efehlt\u201c, \u201ezur\u00fcck\u201c)';
     startRecog(); updVB();
   } else { heard.textContent = ''; if (recog) { try { recog.abort(); } catch(e){} } }
