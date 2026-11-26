@@ -477,6 +477,18 @@ function flowApp(DATA) {
   if (typeof state.step !== 'number') state.step = 0;    // Index in STEPS
   if (typeof state.view !== 'number' || state.view < 0 || state.view > 4) state.view = 0;  // 0 = Ablauf, 1 = Fehlt, 2 = Zeit, 3 = Punkte, 4 = Senden
   if (typeof state.pauseSum !== 'number') state.pauseSum = 0;  // Pausen-Sekunden gesamt
+  // Arbeitszeit mit Uhrzeit (Zeit-Protokoll): beginn = Start des ersten Schritt-Timers (Epoch-ms,
+  // wird nie neu gesetzt; 0 = nicht erfasst), ende = letzter Schritt-Stopp, pausen/luecken = [von, bis].
+  // Altstand ohne diese Felder: lief bisher nur der erste Schritt, ist dessen Start der Beginn.
+  if (state.beginn === undefined) {
+    const zeitDa = Object.keys(state.zeit).length || state.pausiert || state.pauseSum;
+    state.beginn = !zeitDa && state.aktiv && state.seit ? state.seit : (zeitDa || state.aktiv ? 0 : null);
+  }
+  // Nur gueltige Intervalle (Zahlen im Bereich 2020-2100, von <= bis); Fremdwerte werden verworfen.
+  const zp_ok = v => typeof v === 'number' && v > 1577836800000 && v < 4102444800000;
+  const paare = a => (Array.isArray(a) ? a : []).filter(x => Array.isArray(x) && x.length === 2 && zp_ok(x[0]) && zp_ok(x[1]) && x[0] <= x[1]);
+  state.pausen = paare(state.pausen);
+  state.luecken = paare(state.luecken);
   if (!state.meld || typeof state.meld !== 'object') state.meld = {};  // gesendete Meldungen (fuer die Punkte)
   // state.cur = stabile Kennung des angezeigten Schritts (state.step ist nur ein Index und
   // waere nach einer Neuveroeffentlichung mit anderem Zuschnitt ein anderer Schritt - wichtig
@@ -670,7 +682,9 @@ function flowApp(DATA) {
       if (/^[sf]/.test(id) && !STEP_IDS[id]) { delete state[feld][id]; aktivVerwaist = true; }
     });
   });
-  if (state.aktiv && !STEP_IDS[state.aktiv]) { state.aktiv = null; state.seit = null; aktivVerwaist = true; }
+  // Der verworfene Timer lief bis jetzt (seine Schrittzeit geht wie bisher verloren); fuer die
+  // Uhrzeiten gilt er als hier beendet - sonst saehe die Zeit seit dem letzten Stopp wie eine Luecke aus.
+  if (state.aktiv && !STEP_IDS[state.aktiv]) { if (state.seit) state.ende = Date.now(); state.aktiv = null; state.seit = null; aktivVerwaist = true; }
   // Existiert die aktive Schritt-ID noch, den (index-basierten) state.step darauf
   // ausrichten - neu eingefuegte Schritte verschieben sonst gespeicherte Indizes.
   if (state.aktiv) {
@@ -695,13 +709,29 @@ function flowApp(DATA) {
   const sollGesMin = STEPS.reduce((a, s) => a + ((s.ev || s.fahrt) ? 0 : (s.soll || 0)), 0)
     + (P.fahrzeit || 0) + (P.muenz || 0) * sollMin(8, 1) + (P.todos || 0) * sollMin(9, 1);
   function stopTimer() {
-    if (state.aktiv && state.seit) state.zeit[state.aktiv] = (state.zeit[state.aktiv] || 0) + (Date.now() - state.seit) / 1000;
+    if (state.aktiv && state.seit) {
+      const t = Date.now();
+      state.zeit[state.aktiv] = (state.zeit[state.aktiv] || 0) + (t - state.seit) / 1000;
+      state.ende = t;
+    }
     state.aktiv = null; state.seit = null;
   }
   // Pause: haelt den Schritt-Timer an, die Pausenzeit laeuft separat mit (fuers Protokoll).
   function endePause() {
-    if (state.pausiert && state.pauseSeit) state.pauseSum += (Date.now() - state.pauseSeit) / 1000;
+    if (state.pausiert && state.pauseSeit) {
+      const t = Date.now();
+      state.pauseSum += (t - state.pauseSeit) / 1000;
+      state.pausen.push([state.pauseSeit, t]);
+    }
     state.pausiert = 0; state.pauseSeit = null;
+  }
+  // Bei jedem NEUEN Start eines Schritt-Timers: Beginn einmalig setzen; lief seit dem letzten
+  // Stopp bzw. Pausenende mindestens 1 min weder ein Schritt noch eine Pause, ist das eine Luecke.
+  function zeitStart(t) {
+    if (state.beginn == null) state.beginn = t;
+    const pe = state.pausen.length ? state.pausen[state.pausen.length - 1][1] : 0;
+    const bis = Math.max(state.ende || 0, pe);
+    if (bis && t - bis >= 60000) state.luecken.push([bis, t]);
   }
   const pauseIst = () => (state.pauseSum || 0) + (state.pausiert && state.pauseSeit ? (Date.now() - state.pauseSeit) / 1000 : 0);
   window.togglePause = () => {
@@ -710,7 +740,7 @@ function flowApp(DATA) {
     if (state.pausiert) {
       endePause();
       const s = STEPS[state.step];
-      if (!state.done[s.id] && !state.skipd[s.id]) { state.aktiv = s.id; state.seit = Date.now(); }
+      if (!state.done[s.id] && !state.skipd[s.id]) { state.aktiv = s.id; state.seit = Date.now(); zeitStart(state.seit); }
     } else {
       stopTimer();
       state.pausiert = 1; state.pauseSeit = Date.now();
@@ -724,7 +754,7 @@ function flowApp(DATA) {
     state.step = i;
     const s = STEPS[i];
     delete state.done[s.id]; delete state.skipd[s.id];
-    state.aktiv = s.id; state.seit = Date.now();
+    state.aktiv = s.id; state.seit = Date.now(); zeitStart(state.seit);
     // Schritte ohne Positionsliste fuehren die Ablauf-Liste selbst mit (siehe render);
     // beim Wechsel in einen Pack-/Befuell-Schritt geht es an den Seitenanfang zur Liste.
     if (state.view !== 0) { state.view = 0; springTop = true; }
@@ -760,7 +790,7 @@ function flowApp(DATA) {
   // -> dann immer am ersten offenen Schritt ankern.
   if (!state.aktiv && !state.pausiert && naechsterOffen(0) >= 0) {
     const first = (!aktivVerwaist && !state.done[STEPS[state.step].id] && !state.skipd[STEPS[state.step].id]) ? state.step : naechsterOffen(0);
-    state.step = first; state.aktiv = STEPS[first].id; state.seit = Date.now();
+    state.step = first; state.aktiv = STEPS[first].id; state.seit = Date.now(); zeitStart(state.seit);
   }
 
   // ---- Positions-Mechanik (wie Packliste; Status 0 offen / 1 gepackt / 2 fehlt / 3 Teilmenge) ----
@@ -1360,7 +1390,27 @@ function flowApp(DATA) {
     // Gesamt-Soll mit Puffer = dieselbe Summe wie in der Zeit-Uebersicht (Spalte "+Puffer").
     const sollMitPuffer = zeitZeilen().reduce((a, z) => a + z.mp, 0);
     txt += 'GESAMT: Ist ' + fmtM(istGes() / 60) + ' min \u00b7 Soll ' + fmtM(sollGesMin) + ' min \u00b7 mit Puffer ' + fmtM(sollMitPuffer) + ' min\n';
-    return txt;
+    return txt + arbeitszeitZeilen();
+  }
+  // Uhrzeiten fuer den Bericht (lokale Geraetezeit), als eigene Zeilen NACH dem bisherigen
+  // Text - alle Zeilen davor bleiben byte-gleich (bestehende Einleser). Format:
+  //   Arbeitszeit: Beginn <JJJJ-MM-TT HH:MM|offen|nicht erfasst> . Ende <JJJJ-MM-TT HH:MM|offen>
+  //   Pausen mit Uhrzeit (<n>): <keine|von-bis, ...>   Luecken ohne Timer (<n>): <keine|von-bis, ...>
+  // von/bis = HH:MM am Tag des Beginns, sonst JJJJ-MM-TT HH:MM; laufende Pause: von-offen.
+  function arbeitszeitZeilen() {
+    const zw = n => (n < 10 ? '0' : '') + n;
+    const tag = ms => { const d = new Date(ms); return d.getFullYear() + '-' + zw(d.getMonth() + 1) + '-' + zw(d.getDate()); };
+    const uhr = ms => { const d = new Date(ms); return zw(d.getHours()) + ':' + zw(d.getMinutes()); };
+    const tag0 = state.beginn ? tag(state.beginn) : '';
+    const zp = ms => (tag(ms) === tag0 ? '' : tag(ms) + ' ') + uhr(ms);
+    const liste = l => l.length ? l.join(', ') : 'keine';   // immer vollstaendig (keine Kappung)
+    const p = state.pausen.map(x => zp(x[0]) + '\u2013' + zp(x[1]));
+    if (state.pausiert && state.pauseSeit) p.push(zp(state.pauseSeit) + '\u2013offen');
+    const l = state.luecken.map(x => zp(x[0]) + '\u2013' + zp(x[1]));
+    return 'Arbeitszeit: Beginn ' + (state.beginn ? tag(state.beginn) + ' ' + uhr(state.beginn) : (state.beginn === 0 ? 'nicht erfasst' : 'offen'))
+      + ' \u00b7 Ende ' + (state.aktiv || !state.ende ? 'offen' : tag(state.ende) + ' ' + uhr(state.ende)) + '\n'
+      + 'Pausen mit Uhrzeit (' + p.length + '): ' + liste(p) + '\n'
+      + 'L\u00fccken ohne Timer (' + l.length + '): ' + liste(l) + '\n';
   }
   window.reportZeit = async (alt) => {
     if (state.mailOffen) { zeigeView(4); return; }  // erst die offene Rueckfrage beantworten
